@@ -2,19 +2,13 @@
 
 ## 1. 目的
 
-本設計書は、個人が AI と継続的に情報・判断・タスク・知識を扱うための、**小さく始められる汎用 Vault** の恒久的な設計境界を定義する。
+本設計書は、個人がAIと継続的に情報・判断・タスク・知識を扱うための、**小さく始められる個人Vault**の恒久的な設計境界を定義する。
 
-対象は、既存の高度な Personal Vault をそのまま複製することではない。既存 Vault から有効な設計思想だけを抽出し、公開されている一般的なナレッジ管理パターンと組み合わせ、次を満たす軽量構成とする。
+Partner Vaultは既存の高度なPersonal Vaultを複製しない。GitHub + MarkdownをCoreとし、必要な機能だけ後付けする。
 
-- GitHub と Markdown だけでも成立する
-- AI が迷わず必要情報へ到達できる
-- 正本、履歴、TODO、未確認事項、AI解釈を混在させない
-- 機能追加時も Core を外部サービスへ密結合させない
-- Supabase、通知、外部 API 等を後付けできる
-- 個人ごとの Vault を分離し、他人の個人情報へ横断アクセスさせない
-- 将来、汎用 Skill / Rule / Template を別の共有モジュールへ昇格できる
+初期の主要用途は投資情報の整理とし、必要に応じて共同Vault `hiroyuki9614/hr-vault` へ**明示的に共有した情報だけ**を共同正本へ昇格できる。
 
-本設計書は実装手順書ではない。現在の SHA、PR、進捗、実行コマンド、Secret、実環境 ID は正本対象にしない。
+本設計書は実装手順書ではない。現在のSHA、PR、進捗、Secret、実環境IDは正本対象にしない。
 
 ---
 
@@ -22,32 +16,36 @@
 
 ### 2.1 対象
 
-- Markdown Vault の基本ディレクトリ構造
-- AI Agent が Vault を利用するための最小ルーティング
-- 情報の正本ルール
-- Skill / Template の配置方針
-- 外部サービスとの責務境界
-- Supabase を導入する場合の役割
-- 個人情報と Secret の境界
-- 将来の Shared Core への昇格方針
-- 障害時に Core を維持するための縮退方針
+- Markdown Vaultの基本ディレクトリ構造
+- AI Agentの最小ルーティング
+- 正本・履歴・TODO・未確認事項・AI解釈の区分
+- 投資Areaの初期構造
+- Skill / Templateの配置方針
+- Supabase、通知、外部API等のoptional adapter境界
+- 個人情報とSecretの境界
+- 共同Vaultへの明示共有による疎結合
+- 将来のShared Core / shared toolkitへの汎用資産昇格
+- 障害時の縮退・rollback方針
 
 ### 2.2 対象外
 
-初期設計では次を必須機能にしない。
+初期段階では次を実装しない。
 
-- 高度な Control Plane
-- Supabase 上での AGENT / Workflow 本文正本化
-- Vector Database / Embedding 検索
-- 自律 Agent の常時実行
-- 複雑なジョブキュー
-- VPS 常駐 Worker
-- 高度な評価・Telemetry 基盤
-- 複数 Agent の分散ロック
-- Personal Vault 固有の運用ルールの全面移植
-- 個人間でのデータ共有機構
+- 双方向自動同期
+- 個人Vaultのmirror化
+- 個人Vault全文の共同Vaultへのindex
+- 明示指示なしの個人情報共有
+- 他方の個人Vaultへの既定アクセス
+- Git submoduleによるVault間の強結合
+- webhookによる自動共有
+- 高度なControl Plane
+- Vector Database / Embedding検索の必須化
+- 自律Agentの常時実行
+- 複雑なジョブキューや分散ロック
+- Supabaseの必須化
+- Personal Vault固有運用の全面移植
 
-これらは実利用で必要性が確認された場合のみ追加する。
+これらは実利用で必要性が確認された場合だけ再検討する。
 
 ---
 
@@ -55,81 +53,79 @@
 
 ### 3.1 Markdown-first
 
-人間と AI が意味を理解するための主要情報は Markdown を第一選択とする。
-
 ```text
 GitHub / Markdown
-    = 人間と AI が読む恒久情報の正本
+  = 人間とAIが読む恒久情報の正本
 
-Supabase 等
-    = 機械処理に向く構造化状態
+Supabase等
+  = 必要な場合だけ使う構造化・機械状態
 ```
 
-外部サービスが停止しても、Vault の主要情報は GitHub 上の Markdown から読める状態を維持する。
+外部サービスが停止しても主要情報をMarkdownから参照できる状態を維持する。
 
-### 3.2 Core は外部サービスを要求しない
+### 3.2 Coreは外部サービスを要求しない
 
-Core の通常操作は次だけで成立させる。
+通常操作は次だけで成立させる。
 
-- Markdown を読む
-- Markdown を更新する
-- Git で履歴を残す
-- Index から必要な文書へ到達する
-- 選択された Skill を読む
+- Markdownを読む
+- Markdownを更新する
+- Gitで履歴を残す
+- README / Indexから正本へ到達する
+- 必要なSkillだけ読む
 
-Supabase、Telegram、Calendar、外部 API 等を利用できないことを理由に、通常の記録・参照・整理を停止しない。
+Supabase、通知、Calendar、collector等が利用不能でも通常の記録・参照・整理を停止しない。
 
 ### 3.3 正本を乱立させない
 
-同一責務について `final`、`最新版`、`v2` のような複製を増やさない。
+同じ責務について `final`、`最新版`、`v2` のような複製を増やさない。
 
-情報は最低限、次の種類を区別する。
+更新日時が新しいだけで正本と判断しない。
 
-- 現在有効な事実・方針
-- 決定事項
-- 履歴
-- TODO
-- 未確認事項
-- AI の意見・解釈
-- 一時情報
+### 3.4 個人Vaultは独立させる
 
-現在有効な情報と履歴を同じ本文へ無制限に追記しない。
+`hiroyuki9614/vault` はPartner個人情報の正本であり、他人の個人Vaultを既定で読まない。
 
-### 3.4 Progressive Enhancement
+共同利用が必要な情報だけ、専用の共同Vaultへ明示共有する。
 
-最小構成から始め、必要になった機能だけ追加する。
+### 3.5 共同情報は専用正本へ移す
+
+共有writeとread-backが成功した情報は `hiroyuki9614/hr-vault` を共同正本とする。
+
+個人Vault側には同じ共同本文を第二正本として保持せず、必要なら共同正本への参照と個人限定補足だけを残す。
+
+### 3.6 Progressive Enhancement
 
 ```text
 Phase 1: GitHub + Markdown
-Phase 2: 最小 Skill / Template
-Phase 3: 必要な構造化データのみ Supabase
-Phase 4: 通知・定期処理などの Adapter
-Phase 5: 実測で有効性が確認された高度機能
+Phase 2: 最小Skill / Template
+Phase 3: 明示共有によるShared Vault接続
+Phase 4: 必要な構造化状態のみSupabase
+Phase 5: 通知・collector等のAdapter
+Phase 6: 実測で有効性が確認された高度機能
 ```
 
-Phase を進めること自体を目的にしない。
-
-### 3.5 個人 Vault は独立させる
-
-利用者ごとに repository と外部データストアを分離する。
-
-```text
-User A
-  ├─ GitHub Vault A
-  └─ Supabase A (optional)
-
-User B
-  ├─ GitHub Vault B
-  └─ Supabase B (optional)
-```
-
-一方の個人 Vault から他方の個人情報を既定で参照できる構成にはしない。
+Phaseを進めること自体を目的にしない。
 
 ---
 
-## 4. 推奨ディレクトリ構成
+## 4. Repository roles
 
-初期構成は次を基準とする。
+```text
+hiroyuki9614/vault
+  = Partner個人情報の正本
+
+hiroyuki9614/hr-vault
+  = 二人で共有すると明示した情報の共同正本
+
+future shared toolkit / Shared Core
+  = 個人データを含まない汎用Skill・Rule・Template・通知・collector等
+```
+
+共同Vaultは個人Vaultのmirrorではない。
+
+---
+
+## 5. 初期ディレクトリ構成
 
 ```text
 vault/
@@ -141,588 +137,373 @@ vault/
 ├─ 10_Daily/
 ├─ 20_Projects/
 ├─ 30_Areas/
+│  └─ Investing/
 ├─ 40_Resources/
+├─ 50_Shared/
 ├─ 90_Archive/
 │
 ├─ .agents/
 │  ├─ SKILLS_INDEX.md
 │  └─ skills/
 │     ├─ vault-organize/
-│     ├─ task-management/
-│     └─ research/
+│     └─ investment-research/
 │
 ├─ templates/
-│  ├─ project.md
-│  ├─ note.md
-│  └─ decision.md
+│  ├─ decision.md
+│  └─ investment-thesis.md
 │
 ├─ integrations/
 │  ├─ README.md
-│  ├─ supabase/
-│  ├─ notifications/
-│  └─ calendar/
+│  └─ shared-vault/
+│     └─ README.md
 │
 └─ docs/
-   └─ PARTNER_VAULT_LITE_DESIGN.md
+   ├─ PARTNER_VAULT_LITE_DESIGN.md
+   └─ SHARED_VAULT_CONTRACT.md
 ```
 
-ディレクトリは最初から全て実装する必要はない。責務境界として予約し、空ディレクトリ維持のためだけのファイルは原則作成しない。
+空ディレクトリ維持のためだけのファイルは原則作らない。
 
 ---
 
-## 5. 各ディレクトリの責務
+## 6. 各ディレクトリの責務
 
 ### `00_Inbox`
 
-未整理情報の一時入口。
-
-長期正本として利用しない。保存先が明確になった情報は適切な正本へ統合する。
+未整理情報の一時入口。長期正本にしない。
 
 ### `10_Daily`
 
-日付に紐づく出来事、作業ログ、短期的な状態を保存する。
-
-恒久的な仕様・プロフィール・知識の第一参照先にはしない。
+日付に紐づく出来事、短期状態、作業ログを保存する。恒久方針の第一参照先にしない。
 
 ### `20_Projects`
 
 完了条件のある活動を管理する。
 
-各 Project は最低限、目的・現在状態・完了条件・主要な決定への導線を持つ。
-
 ### `30_Areas`
 
-終了期限を持たず、継続的に管理する責務を保存する。
-
-例:
-
-- 家計
-- 健康
-- 仕事
-- 家庭
-- 学習
+終了期限を持たず継続管理する領域。初期の主要Areaは `Investing/`。
 
 ### `40_Resources`
 
-再利用可能な知識、調査、手順のうち、Project や Area 固有ではないものを保存する。
+Project / Area固有ではない再利用可能な知識・調査を保存する。
+
+### `50_Shared`
+
+共同Vaultへの導線と個人限定補足を置く。共同本文の第二正本にしない。
 
 ### `90_Archive`
 
-現在参照の第一候補ではない完了済み・旧情報を保存する。
-
-Git 履歴で十分な旧版コピーは作成しない。
+現在の第一参照先ではない完了済み・旧情報を保存する。Git履歴で十分な旧版コピーは作らない。
 
 ### `.agents`
 
-AI のルーティングと再利用可能な Skill を保存する。
-
-AI が全 Skill を毎回読む構成にしない。`SKILLS_INDEX.md` で候補を絞り、必要な Skill だけを読む。
+Skill routingを置く。全Skillを毎回読まず、`SKILLS_INDEX.md` から必要なSkillだけ選ぶ。
 
 ### `templates`
 
-利用者が繰り返し作る Markdown の型を保存する。
-
-Template は正本の代替ではなく、新規作成時の初期形だけを提供する。
+新規Markdownの初期形だけを提供する。Template自体を正本にしない。
 
 ### `integrations`
 
-外部サービス固有の Adapter を配置する。
-
-Core の責務をここへ逆流させない。
+外部サービス固有の接続境界を置く。Coreの意味情報をここへ逆流させない。
 
 ---
 
-## 6. 正本と情報分類
+## 7. 正本と情報分類
 
-### 6.1 正本の優先順位
+### 7.1 第一参照先
 
-対象テーマについて、次の順で第一参照先を決める。
-
-1. 明示的に canonical と定義された文書
-2. README / Index から第一参照先として案内される文書
+1. 明示的にcanonicalと定義された文書
+2. README / Indexから第一参照先として案内される文書
 3. 責務が一致する既存文書
 4. 新規文書
 
-更新日時が新しいだけで正本と判断しない。
-
-### 6.2 情報分類
+### 7.2 情報分類
 
 | 情報 | 保存先の原則 |
 |---|---|
 | 現在有効な事実・方針 | 対象テーマの正本 |
-| 決定事項 | 正本または Decision 文書 |
+| 決定事項 | 正本またはDecision文書 |
 | 日々の出来事 | Daily |
-| 進行中 Project | Projects |
+| 進行中Project | Projects |
 | 継続責務 | Areas |
 | 再利用知識 | Resources |
 | 未整理 | Inbox |
-| 完了・旧情報 | Archive または Git 履歴 |
-| TODO | 関連 Project / Area。機械処理が必要なら Supabase 併用可 |
-| 未確認情報 | 正本内の明示セクションまたは Inbox |
-| AI 解釈 | 事実と区別して記録 |
+| 完了・旧情報 | ArchiveまたはGit履歴 |
+| TODO | 関連Project / Area。機械処理が必要なら外部state併用可 |
+| 未確認情報 | 正本内で明示、またはInbox |
+| AI解釈 | Factsと区別して記録 |
+
+### 7.3 個人 / 共同境界
+
+- 個人portfolio / watchlist / thesis / 判断途中メモはPartner Vaultを正本とする。
+- 共同portfolio / watchlist / 投資方針 / 共同判断等は明示共有後に `hr-vault` を正本とする。
+- 共有済み共同本文をPartner Vaultでも独立更新しない。
+- 共有成立前または共有失敗時は個人側の正本を維持する。
 
 ---
 
-## 7. AI Agent の最小ルーティング
+## 8. AI Agentの最小ルーティング
 
-AI が Vault を扱う際は、全文走査を既定にしない。
-
-基本ルートは次とする。
+通常ルート:
 
 ```text
 User Request
-   ↓
-root AGENTS.md
-   ↓
-関連 Index / README
-   ↓
-対象の正本候補
-   ↓
-必要なら SKILLS_INDEX.md
-   ↓
-選択された SKILL.md のみ
-   ↓
-Read / Update
+  -> root AGENTS.md
+  -> vault.config.yml
+  -> 関連README / 既存正本
+  -> 必要な場合だけ SKILLS_INDEX.md
+  -> 選択されたSKILL.mdだけ
+  -> Read / Update
 ```
 
-### 最小ルール
+最小ルール:
 
-- 依頼と無関係なディレクトリを全走査しない
-- Skill は最大限必要なものだけ読む
+- 依頼と無関係な全文走査をしない
 - 既存正本を確認してから新規ファイルを作る
-- AI の推論を本人確認済みの事実に変換しない
-- 本人情報・Secret を外部サービスへ不要に送信しない
-- write 後は可能な範囲で同じ対象を read-back する
+- AI推論を本人確認済み事実へ変換しない
+- write後は可能な範囲で同じ対象をread-backする
 
----
+### Shared Vault操作時の追加ルート
 
-## 8. Skill 設計
-
-初期段階では Skill を増やしすぎない。
-
-推奨する初期 Skill は最大 3〜5 個とする。
-
-### 8.1 `vault-organize`
-
-用途:
-
-- 保存先判断
-- 正本への統合
-- Inbox 整理
-- 重複文書防止
-
-### 8.2 `task-management`
-
-用途:
-
-- TODO 抽出
-- Project との関連付け
-- 完了条件整理
-- 必要時の Supabase task 同期
-
-### 8.3 `research`
-
-用途:
-
-- Web 調査結果の保存
-- 出典と AI 解釈の分離
-- 一時調査と恒久 Resources の切り分け
-
-### 8.4 Skill 昇格条件
-
-新規 Skill は、単に便利そうという理由で追加しない。
-
-次のいずれかを満たす場合に候補とする。
-
-- 同じ判断・手順が複数回発生した
-- 人による実行差が問題になった
-- 再利用価値が明確になった
-- 通常ルールだけでは抜け漏れが繰り返された
-
----
-
-## 9. 外部知識の取り込み
-
-ネット上の Vault、PKM、PARA、Agent Memory 等は**参考実装**として扱う。
-
-外部 repository や記事を runtime dependency にしない。
+`hr-vault` を読む・書く場合はPartner Vault側の想定だけで操作しない。
 
 ```text
-External Knowledge
-      ↓ 参考・比較
-Design Decision
-      ↓ 採用判断
-Local Rule / Skill / Template
-      ↓
-Partner Vault Core
+explicit shared context
+  -> hr-vault/AGENTS.md
+  -> hr-vault/config/permissions.yml
+  -> 対象README / canonical
+  -> permission確認
+  -> 最小write
+  -> same target read-back
 ```
 
-### 採用ルール
-
-外部アイデアを採用する場合は次を確認する。
-
-- この Vault の実利用に必要か
-- Core の依存を増やさないか
-- 情報探索コストを減らすか
-- 利用者が理解できるか
-- 既存責務と重複しないか
-- ライセンス上、コードや文章の再利用が許可されているか
-
-外部 repository の内容を無条件にコピーしない。
+対象repositoryのルール・権限正本を確認できない場合、shared writeはfail-closedとする。
 
 ---
 
-## 10. Supabase 境界
+## 9. Skill設計
 
-### 10.1 初期状態
+初期Skillは必要最小限とする。
 
-Supabase は **optional** とする。
+### `vault-organize`
 
-Supabase project が存在しなくても Vault Core は利用可能でなければならない。
+- 保存先判断
+- 正本統合
+- Inbox整理
+- 個人 / 共同境界判断
+- 重複正本防止
 
-### 10.2 Supabase に向く情報
+### `investment-research`
 
-次のような「機械処理を繰り返す構造化状態」は Supabase 候補とする。
+- 投資調査
+- Facts / Interpretation / Risks / Unknownsの分離
+- 本人判断とAI評価の分離
+- 個人thesis / watchlist / portfolioの保存先判断
 
-- TODO / task state
-- reminder / notification state
-- 定期処理の実行状態
-- event log
-- 軽量 telemetry
-- 外部サービス同期状態
-- 集計対象となる時系列データ
-- 複数クライアントから CRUD するデータ
+新規Skillは同じ判断・手順が繰り返され、通常ルールだけでは抜け漏れが出る場合に候補とする。
 
-### 10.3 Markdown に残す情報
+---
 
-次は原則 Markdown 正本とする。
+## 10. Shared Vault接続境界
 
-- 本人プロフィールの説明
-- Project の目的・方針
+詳細契約は `docs/SHARED_VAULT_CONTRACT.md` を正本とする。
+
+### Read
+
+共同情報が依頼に必要な場合だけ `hr-vault` を読む。通常依頼で毎回読む構成にしない。
+
+### Write
+
+新規共有writeは最低限、次を満たす。
+
+1. ユーザーの明示共有意図がある
+2. 共有する最小情報だけを抽出している
+3. `hr-vault/AGENTS.md` を確認している
+4. `hr-vault/config/permissions.yml` でsubject / action / path / conditionが許可されている
+5. 既存共同正本を確認している
+6. Secretを含まない
+7. write後に同じ対象をread-backできる
+
+`hr-vault` の権限方針は `default_effect: deny` を前提とし、許可を確認できないwriteは行わない。
+
+### Failure
+
+共有先writeまたはread-backが失敗した場合、共有成立とみなさない。個人側の正本を勝手に削除・移動しない。
+
+---
+
+## 11. Supabase / 外部Adapter境界
+
+Supabase、通知、Calendar、外部API、schedulerはoptional adapterとする。
+
+Supabase候補:
+
+- task state
+- alert / notification state
+- scheduler state
+- market snapshot / time series
+- event log / lightweight telemetry
+- 外部同期状態
+
+Markdown正本候補:
+
+- 投資方針
+- Projectの目的・背景
 - 判断理由
 - ナレッジ本文
 - 設計書
 - 長文メモ
-- AI が意味理解するための文脈
 
-### 10.4 二重正本禁止
+同じ情報をMarkdownとDBで独立更新するdual canonicalは禁止する。
 
-同一責務を Markdown と Supabase の両方で独立更新しない。
-
-同期する場合は必ず一方を canonical とする。
-
-例:
-
-```text
-Task body / task status
-  -> Supabase canonical
-
-Project の目的・背景・判断
-  -> Markdown canonical
-
-Markdown から task を表示する場合
-  -> Supabase の派生 view / snapshot として扱う
-```
-
-### 10.5 Supabase 導入判断
-
-次のいずれかが実際に必要になった時点で導入する。
-
-- Markdown だけでは検索・集計が不便
-- 自動通知が必要
-- 定期処理が必要
-- 状態遷移を機械的に保証したい
-- 複数サービスから同じ構造化状態を更新したい
-
-「将来使うかもしれない」だけでは導入しない。
+通知・market collector・alert engine等の汎用実装を各Vaultへコピーしない。複数Vaultで再利用する場合はshared toolkit候補とする。
 
 ---
 
-## 11. Integration Adapter 境界
+## 12. Shared Core / toolkit昇格
 
-外部連携は `integrations/` 配下へ閉じ込める。
+共同データと汎用コードを混同しない。
 
-```mermaid
-flowchart TD
-    U[User / AI] --> C[Vault Core<br/>GitHub + Markdown]
-    C --> I[Integration Interfaces]
-    I --> S[Supabase Adapter]
-    I --> N[Notification Adapter]
-    I --> G[Calendar Adapter]
-    I --> X[Other API Adapter]
+昇格候補:
 
-    S -. unavailable .-> C
-    N -. unavailable .-> C
-    G -. unavailable .-> C
-```
+- 個人情報を含まないSkill
+- 汎用Rule
+- Template
+- lint / validation
+- 通知・collector等の一般化された実装
 
-破線は「利用不能でも Core を停止させない」境界を表す。
+昇格しないもの:
 
-### Adapter の原則
-
-- Core 文書から特定 SDK を直接要求しない
-- 外部 API の認証情報を Markdown 正本へ書かない
-- 外部サービス固有 ID を恒久設計へ埋め込まない
-- Adapter 障害時に Markdown の読み書きを壊さない
-- Adapter の削除で Core の情報が失われない
-
----
-
-## 12. Shared Core 構想
-
-個人 Vault で有効性が確認された汎用資産は、将来的に Shared Core へ昇格できる。
-
-```text
-                 generic-vault-core
-                /        |        \
-           Skills      Rules    Templates
-              ↑           ↑          ↑
-              │ validated reusable assets
-              │
-     ┌────────┴────────┐
-     │                 │
-personal-vault    partner-vault
-```
-
-### Shared Core に含めてよいもの
-
-- 個人情報を含まない Skill
-- 汎用 Template
-- 一般的な Markdown schema
-- 共通 lint / validation script
-- 一般化された運用ルール
-
-### Shared Core に含めないもの
-
-- 本人プロフィール
-- 個人の履歴
-- 家計・健康・仕事などの実データ
+- 個人portfolio / watchlist / thesis
+- 個人履歴
 - Secret
-- 個人固有の API ID
-- 個人特有の判断を一般化していない Rule
-
-### 昇格条件
-
-Shared Core への移動は次を満たす場合だけ行う。
-
-1. 複数 Vault で再利用価値がある
-2. 個人固有情報を除去できる
-3. 入出力または適用条件を説明できる
-4. 元 Vault の存在を要求しない
-5. 変更による影響範囲を限定できる
+- 個人固有API ID
+- 一般化されていない個人判断
 
 ---
 
-## 13. Security / Privacy 境界
+## 13. Security / Privacy
 
-### 13.1 Repository visibility
+### Repository visibility
 
-**実データを保存する個人 Vault は private repository を前提とする。**
+**実在する個人情報・金融情報を保存する個人Vaultはprivate repositoryを前提とする。**
 
-public repository では、設計書・汎用 Skill・Template 等の個人情報を含まない資産のみ扱う。
+public repositoryでは設計書・汎用Skill・Template等、個人情報を含まない資産だけを扱う。
 
-### 13.2 Secret
+repositoryがprivateであることを確認できない状態では、Agentは実在する個人情報・金融情報を新規保存しない。
 
-次は Git 管理しない。
+### Secret
 
-- Supabase service role key
+次はGit管理しない。
+
 - API token
-- private key
 - password
+- private key
 - OAuth credential
 - webhook secret
+- brokerage authentication
+- Supabase service role key
 
-Secret は利用環境の Secret Store / Environment Variable 等へ保存する。
+### Cross-vault privacy
 
-### 13.3 個人情報
-
-外部 AI・外部 API へ送る情報は、タスク達成に必要な最小範囲とする。
-
-個人情報を含む文書を Shared Core へ昇格しない。
-
-### 13.4 個人間の境界
-
-各 Vault は独立した認証境界を持つ。
-
-共有機能が必要になった場合も、原則は Shared Core の「コード・ルール共有」とし、個人データの相互読み取りは別要件として設計する。
+- 個人Vault全文を共同Vaultへ送らない
+- 共有に不要な感情・評価・未整理文脈を付加しない
+- 他方の個人Vaultを既定参照しない
+- shared vaultへのアクセス権を個人Vault本文のコピーで迂回しない
 
 ---
 
-## 14. 障害・縮退方針
+## 14. 障害・縮退・Rollback
 
-### GitHub が利用可能 / Supabase が利用不能
-
-Markdown Core の通常利用を継続する。
-
-構造化機能だけ `degraded` とする。
-
-### Supabase が利用可能 / GitHub が利用不能
-
-Supabase の構造化状態は参照できても、Markdown 正本を推測で更新しない。
-
-GitHub 復旧後に正本から再開する。
-
-### Integration が利用不能
-
-通知・同期を停止し、Core を継続する。
-
-### Skill が壊れた / 不明
-
-通常の Markdown 読み書きへ fallback する。
-
-Skill 不在を理由に Vault 全体を停止しない。
+- GitHub利用可 / Adapter利用不能: Markdown Coreを継続する
+- GitHub利用不能: Markdown正本を推測更新しない
+- Shared Vault利用不能: 共有を未成立として個人正本を維持する
+- permission policyを読めない: shared writeを拒否する
+- Skillが壊れた: 通常のMarkdown読み書きへfallbackする
+- Markdown / Rule / Skill: Git履歴を基本rollback手段とする
+- Supabase導入後のschema: migrationで管理する
 
 ---
 
-## 15. Rollback 方針
+## 15. 主要設計判断
 
-### Markdown / Rule / Skill
+### 判断A: GitHub + MarkdownをCoreとする
 
-Git 履歴を基本 rollback 手段とする。
+依存・運用・復旧の複雑性を抑え、人間とAIの双方が読めるため。
 
-### Supabase schema
+### 判断B: Supabaseはoptionalとする
 
-導入後は migration 管理を行い、破壊的変更は rollback または forward fix 可能な単位に限定する。
+構造化状態には有効だが、意味情報までDB正本にすると初期運用が過剰になるため。
 
-### Integration
+### 判断C: 個人Vaultと共同Vaultを分離する
 
-Adapter を disable / remove しても Core が動作することを維持する。
+個人情報の既定分離を維持し、共同情報だけを専用正本で管理するため。
 
----
+### 判断D: Shared Vault接続は明示共有のみとする
 
-## 16. 主要設計判断
+共同利用の需要は満たしつつ、自動同期・mirror・暗黙共有による漏えいとdual canonicalを避けるため。
 
-### 判断 A: GitHub + Markdown を Core とする
+### 判断E: target policyをshared writeの必須ゲートとする
 
-**理由:**
-人間と AI の双方が読みやすく、Git で履歴を管理でき、特定 SaaS 障害に依存しない。
+共有先repository自身の権限正本を無視してsource側だけでwrite可否を決めると、権限境界を迂回できるため。
 
-**代替案:**
-Supabase-first、Notion-first、Vector DB-first。
+### 判断F: 高度なPersonal Vault Control Planeは移植しない
 
-**採用しなかった理由:**
-初期構成として依存・運用・復旧の複雑性が高い。
-
-**再検討条件:**
-Markdown では主要ユースケースの検索・更新性能を満たせないことが実測された場合。
-
-### 判断 B: Supabase は optional Adapter とする
-
-**理由:**
-構造化状態には有効だが、Vault の意味情報まで DB 正本にすると初期利用者には複雑すぎる。
-
-**代替案:**
-初日から Supabase を必須にする。
-
-**採用しなかった理由:**
-利用開始前から障害点と認知負荷を増やすため。
-
-**再検討条件:**
-Task、通知、定期処理、状態遷移など DB を使う具体的需要が発生した場合。
-
-### 判断 C: 個人 Vault と Shared Core を分離可能にする
-
-**理由:**
-有効な Skill / Rule を再利用しつつ、個人情報を共有しないため。
-
-**代替案:**
-一つの巨大 repository に全利用者の Vault を配置する。
-
-**採用しなかった理由:**
-権限境界、Secret、誤参照、変更影響が大きくなるため。
-
-**再検討条件:**
-複数利用者で同一データを共同編集する要件が明確になった場合。
-
-### 判断 D: 高度な Personal Vault Control Plane は移植しない
-
-**理由:**
-高度な運用は既存 Personal Vault の規模・自動化・失敗学習から必要になったものであり、初期の Partner Vault へ持ち込むと過剰設計になる。
-
-**代替案:**
-既存 Personal Vault の AGENT / Workflow / Supabase Control Plane を複製する。
-
-**採用しなかった理由:**
-依存、保守、理解コスト、障害点が大きく、簡易 Vault の目的に反するため。
-
-**再検討条件:**
-実利用で同等の複雑性が必要になり、その効果が運用コストを上回ることが確認された場合。
+初期Partner Vaultへ持ち込むと依存・保守・理解コストが過大になるため。
 
 ---
 
-## 17. 非機能要件
+## 16. 初期導入の完了条件
 
-### Portability
+実データを扱うPhase 1運用は次を満たした時点でreadyとする。
 
-Git clone と Markdown reader があれば主要情報を参照できること。
+- repositoryがprivateである
+- root `README.md` から目的と主要ディレクトリを理解できる
+- root `AGENTS.md` からAIの最小ルーティングを理解できる
+- `vault.config.yml` に個人 / 共同境界が定義されている
+- Inbox / Daily / Projects / Areas / Resources / Shared / Archiveの責務が定義されている
+- 投資Areaの個人正本境界が定義されている
+- Skillが必要最小限でIndexから到達できる
+- Shared Vaultの明示共有契約が定義されている
+- Shared Vault writeがtarget `AGENTS.md` / `config/permissions.yml` に従う
+- Supabaseが存在しなくても通常操作が成立する
+- Secretがrepositoryへ保存されない
+- 外部Integrationを削除してもCoreが成立する
 
-### Recoverability
-
-外部サービス障害時でも GitHub 上の Markdown から主要情報を復元できること。
-
-### Understandability
-
-新規利用者が root README / AGENTS から主要ディレクトリと正本ルールを追跡できること。
-
-### Loose Coupling
-
-任意の Integration を削除しても Core の Markdown 読み書きが壊れないこと。
-
-### Privacy
-
-個人 Vault のデータを Shared Core へ自動的に流出させないこと。
+共同Vault接続が存在しても、自動同期や個人情報の暗黙共有はready条件に含めない。
 
 ---
 
-## 18. 初期導入の完了条件
+## 17. 将来拡張候補
 
-Partner Vault Lite の Phase 1 は次を満たした時点で完成とする。
-
-- repository が private である
-- root `README.md` から Vault の目的と主要ディレクトリを理解できる
-- root `AGENTS.md` から AI の最小ルーティングが理解できる
-- Inbox / Daily / Projects / Areas / Resources / Archive の責務が定義されている
-- 正本・履歴・TODO・未確認・AI 解釈の扱いが定義されている
-- Skill は必要最小限で、Index から個別 Skill へ到達できる
-- Supabase が存在しなくても通常の Vault 操作が成立する
-- Secret が repository に保存されない
-- 外部 Integration を削除しても Core が成立する
-
-Supabase の project 作成、task table 作成、通知連携等は Phase 1 完了条件に含めない。
-
----
-
-## 19. 将来拡張候補
-
-必要性が確認されたものだけ検討する。
+必要性が実測されたものだけ検討する。
 
 - Supabase Task Store
 - Reminder / Notification Adapter
 - Calendar Adapter
 - Telegram / LINE Adapter
+- market collector / crash alert
 - Web clipping / Research ingestion
-- 定期 Daily / Weekly maintenance
+- 定期Daily / Weekly maintenance
 - Failure learning
 - Skill usage telemetry
-- Shared Core repository
+- Shared Core / shared toolkit repository
 - Vault schema validation
-- AI handoff template
-- Read-only family/shared area
+- Read-only family/shared view
 - Personal data export / backup
-
-候補に存在するだけでは実装対象としない。
 
 ---
 
-## 20. 関連文書
-
-今後、必要になった時だけ次を追加する。
+## 18. 関連文書
 
 - `README.md` — 利用者向け入口
-- `AGENTS.md` — AI 向け最小ルーティング
-- `.agents/SKILLS_INDEX.md` — Skill の選択ルール
-- `integrations/README.md` — Adapter 境界
-- Supabase 導入時の Data / Migration 設計書
-- Shared Core を分離する場合の ADR
+- `AGENTS.md` — AI向け最小ルーティング
+- `vault.config.yml` — repository / integration境界
+- `.agents/SKILLS_INDEX.md` — Skill routing
+- `docs/SHARED_VAULT_CONTRACT.md` — 共同Vault接続の詳細契約
+- `integrations/README.md` — Adapter境界
+- `integrations/shared-vault/README.md` — Shared Vault integration入口
 
 本設計書自体に実装進捗や運用ログを追記しない。
