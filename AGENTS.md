@@ -44,6 +44,18 @@
 
 詳細契約は `docs/SHARED_VAULT_CONTRACT.md`。
 
+## Shared Vault target policy
+
+`hr-vault` を読む・書く場合は、このrepository側のルールだけで可否を決めない。
+
+1. `hiroyuki9614/hr-vault/AGENTS.md` を読む。
+2. `hiroyuki9614/hr-vault/config/permissions.yml` を読む。
+3. 対象action/path/conditionが許可されていることを確認する。
+4. 既存共同正本を確認してから最小差分だけwriteする。
+5. write後に同じ対象をread-backする。
+
+`hr-vault` のpermission policyを読めない、またはallowを確認できないwriteは行わない。target repositoryのより厳しいルールをsource側の都合で迂回しない。
+
 ## Information classes
 
 最低限、次を区別する。
