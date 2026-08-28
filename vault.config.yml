@@ -18,6 +18,12 @@ shared_vault:
   write_policy: explicit_share_only
   canonical_after_verified_publish: shared_vault
   fallback_on_unavailable: keep_personal_source_unchanged
+  target_policy:
+    agents_path: AGENTS.md
+    permissions_path: config/permissions.yml
+    require_policy_read: true
+    require_explicit_allow_for_write: true
+    fail_closed_on_policy_unavailable: true
 
 integrations:
   supabase:
