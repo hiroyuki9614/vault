@@ -7,12 +7,17 @@
 共有フロー:
 
 ```text
-private information
+explicitly shareable information
   -> explicit share instruction
-  -> hr-vaultへwrite
+  -> hr-vault/AGENTS.mdを確認
+  -> hr-vault/config/permissions.ymlを確認
+  -> action/path/conditionのallowを確認
+  -> hr-vaultへ最小write
   -> same targetをread-back
   -> verifiedならhr-vaultが共同正本
   -> personal vaultには参照 + 個人限定補足だけ
 ```
+
+permission policyを読めない、allowを確認できない、write/read-backに失敗した場合は共有未成立として個人側の正本を維持します。
 
 詳細: `../docs/SHARED_VAULT_CONTRACT.md`
