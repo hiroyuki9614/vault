@@ -21,6 +21,8 @@
 - 二人で決めた投資判断
 - 共同通知条件
 
+shared writeは明示共有だけでは成立しません。`hr-vault/AGENTS.md` と `hr-vault/config/permissions.yml` を確認し、対象action/path/conditionのallowを確認できる場合だけwriteします。write後に同じ対象をread-backできた場合のみ共有成立とします。
+
 個人メモを共有しただけで、個人側の非公開な理由・感情・補足まで共有対象にしません。
 
 ## 通知・株価収集
