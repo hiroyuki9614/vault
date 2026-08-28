@@ -14,7 +14,9 @@
 
 ## Scope
 
-- personal / shared
+- personal
+
+<!-- sharedへ変更するのは、ユーザーが共同Vaultへの共有を明示した場合だけ。 -->
 
 ## Revisit condition
 
