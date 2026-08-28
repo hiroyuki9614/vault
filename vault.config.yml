@@ -1,0 +1,31 @@
+schema_version: 1
+
+vault:
+  kind: personal
+  canonical_repository: hiroyuki9614/vault
+  storage: markdown_git
+
+privacy:
+  require_private_for_personal_data: true
+  secrets_in_repository: forbidden
+
+shared_vault:
+  enabled: true
+  repository: hiroyuki9614/hr-vault
+  mode: explicit_publish
+  auto_sync: false
+  read_policy: explicit_shared_context_only
+  write_policy: explicit_share_only
+  canonical_after_verified_publish: shared_vault
+  fallback_on_unavailable: keep_personal_source_unchanged
+
+integrations:
+  supabase:
+    required: false
+    role: structured_machine_state_only
+  notifications:
+    required: false
+    implementation: external_toolkit_preferred
+  scripts:
+    required: false
+    implementation: external_toolkit_preferred
