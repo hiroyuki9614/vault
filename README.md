@@ -39,7 +39,11 @@ AGENTS.md
 
 共同Vault: `hiroyuki9614/hr-vault`
 
-自動同期はしません。共有は必ず明示的に行い、共有後の共同情報は `hr-vault` を正本とします。詳細は `docs/SHARED_VAULT_CONTRACT.md` を参照してください。
+自動同期はしません。共有は必ず明示的に行い、共有先の `AGENTS.md` と `config/permissions.yml` による許可を確認してからwriteします。共有後に同じ対象をread-backできた共同情報だけ `hr-vault` を正本とします。
+
+permission policyを確認できない場合やwrite/read-backに失敗した場合は共有未成立として個人側の正本を維持します。
+
+詳細は `docs/SHARED_VAULT_CONTRACT.md` を参照してください。
 
 ## 設計書
 
