@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "canonical_data_backend": "supabase",
+  "supabase_required": true,
+  "github_data_canonical": false,
+  "runtime_capability_files": 0,
+  "forbidden_top_level_paths": [
+    "00_Inbox",
+    "10_Daily",
+    "20_Projects",
+    "30_Areas",
+    "40_Resources",
+    "50_Shared",
+    "90_Archive",
+    "integrations"
+  ],
+  "required_paths": [
+    "README.md",
+    "AGENTS.md",
+    "vault.config.yml",
+    "docs/ARCHITECTURE.md",
+    "supabase/README.md",
+    "supabase/migrations/202608310001_supabase_first_vault.sql"
+  ],
+  "required_rpc_names": [
+    "get_document",
+    "put_document",
+    "delete_document"
+  ]
+}
