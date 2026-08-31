@@ -1,77 +1,47 @@
-# Partner Vault Agent Rules
+# Public Vault Agent Rules
 
-このrepositoryは軽量な個人Vaultである。高度なControl Planeや外部DBを前提にせず、GitHub + Markdownだけで通常の記録・参照・整理を成立させる。
+この repository は Supabase-first Vault の公開 Reference Implementation です。個人 Vault ではありません。
 
 ## Bootstrap
 
 1. `vault.config.yml` を読む。
-2. 依頼に関係するトップレベルREADMEまたは既存正本だけを読む。
-3. Skillが必要な場合だけ `.agents/SKILLS_INDEX.md` を読み、選択した `SKILL.md` だけを読む。
-4. 既存正本を確認してから新規ファイルを作る。
-5. write後は可能な範囲で同じ対象をread-backする。
+2. schema / data boundary に触れる場合は `docs/ARCHITECTURE.md` と `supabase/README.md` を読む。
+3. SQL を変更する場合は既存 migration と public RPC contract を確認する。
+4. 変更後は `python tooling/architecture_check.py` を実行する。
 
-全文走査を既定にしない。
-
-## Privacy
-
-- repositoryがprivateであることを確認できない状態では、実在する個人情報・金融情報・Secretを新規保存しない。
-- token、password、API key、秘密鍵、証券口座認証情報をrepositoryへ保存しない。
-- AIの推論を本人確認済みの事実へ変換しない。
+全文走査、追加review、追加gateを既定にしません。
 
 ## Canonical boundary
 
-### 個人情報
+- mutable Vault data の唯一の canonical storage は Supabase PostgreSQL。
+- GitHub Markdown / JSON / template は code and contract であり、ユーザーデータの canonical storage にしない。
+- Supabase unavailable 時に GitHub へ data write fallback しない。
+- document identity は `documents.id`。`path` は locator であり identity ではない。
 
-本人だけに属する情報はこのrepositoryを正本とする。
+## Supabase boundary
 
-例:
-- 個人の投資方針
-- 個人portfolio
-- 個人watchlist
-- 個人の判断メモ
-- 個人Project / Area
+- Supabase Auth と RLS を必須とする。
+- 通常 client / Agent は semantic RPC (`get_document`, `put_document`, `delete_document`) を使用する。
+- service-role key を client、Prompt、repository に置かない。
+- project URL / publishable key は deployment environment から注入する。
+- schema change は新しい migration で行う。適用済み migration を書き換えて履歴を改変しない。
+- write は expected version を使う optimistic concurrency と same-identity read-back を基本とする。
 
-### 共同情報
+## Public repository safety
 
-`vault.config.yml` が示す shared vault へ**明示的に共有された情報だけ**共同情報として扱う。
+禁止:
 
-- 現在のshared vault: `hiroyuki9614/hr-vault`
-- 自動同期しない。
-- 「共有して」「共同Vaultへ」等の明示指示なしに個人情報を書き出さない。
-- 共有writeが成功してread-backできた場合、その共有情報の共同正本は `hr-vault` とする。
-- 個人側に必要な補足は、共同正本への参照と個人限定メモに分離する。
-- shared vaultが利用不能なら、個人側の正本を勝手に移動・削除しない。
+- 実在人物の個人情報・金融情報・顧客情報の保存
+- token / password / API key / private key の保存
+- Supabase service-role key の保存
+- private/shared Vault からの自動同期
+- synthetic example を実データのように見せること
+- GitHub と Supabase の dual canonical
 
-詳細契約は `docs/SHARED_VAULT_CONTRACT.md`。
+## Architecture rule
 
-## Shared Vault target policy
-
-`hr-vault` を読む・書く場合は、このrepository側のルールだけで可否を決めない。
-
-1. `hiroyuki9614/hr-vault/AGENTS.md` を読む。
-2. `hiroyuki9614/hr-vault/config/permissions.yml` を読む。
-3. 対象action/path/conditionが許可されていることを確認する。
-4. 既存共同正本を確認してから最小差分だけwriteする。
-5. write後に同じ対象をread-backする。
-
-`hr-vault` のpermission policyを読めない、またはallowを確認できないwriteは行わない。target repositoryのより厳しいルールをsource側の都合で迂回しない。
-
-## Information classes
-
-最低限、次を区別する。
-
-- 現在有効な事実・方針
-- 決定事項
-- 履歴
-- TODO
-- 未確認事項
-- AIの意見・解釈
-- 一時情報
-
-`final`、`最新版`、`v2`のような重複正本を増やさない。
-
-## External services
-
-Supabase、通知、Calendar、外部API、定期Workerはoptional adapterであり、利用不能でもMarkdown Coreを停止させない。
-
-通知・株価収集・alert engine等の汎用実装をこのrepositoryへ安易にコピーしない。複数Vaultで再利用する実装は共通toolkit候補として扱う。
+- repository は data plane runtime を抱え込まない。
+- Auth / persistence / authorization は Supabase adapter が所有する。
+- domain caller は semantic operation に依存し、physical table shape へ依存しない。
+- 新しい Control Plane、Work Context、recovery stack、review stack を追加しない。
+- 機械判定可能な invariant は既存 `architecture_check.py` に集約する。

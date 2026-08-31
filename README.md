@@ -1,51 +1,68 @@
-# Partner Vault
+# Vault
 
-個人の情報・判断・投資メモを、Markdown-firstでAIと継続利用するための軽量Vaultです。
+Supabase を正本にする、公開用 Vault Reference Implementation です。
 
-## 基本方針
+この repository 自体には個人データ・業務データを保存しません。GitHub は設計、SQL migration、Agent contract、template、architecture check の配布面です。実データの canonical storage は Supabase PostgreSQL です。
 
-- このrepositoryは**個人Vault**。本人だけの情報の正本を持つ。
-- 二人で共有すると明示した情報は `hiroyuki9614/hr-vault` を共同正本とする。
-- 個人情報・金融情報を保存する前にrepositoryがprivateであることを確認する。
-- Supabase、通知、定期処理、外部APIはCoreの必須依存にしない。
-- 通知・収集・判定などの汎用コードは、このVaultへ複製せず将来の共通toolkitへ切り出す。
-
-## 入口
+## Architecture
 
 ```text
-AGENTS.md
-  -> vault.config.yml
-  -> 関連README / 正本
-  -> 必要な場合だけ .agents/SKILLS_INDEX.md
+Client / AI Agent
+      |
+      v
+ semantic operation
+      |
+      v
+Supabase Auth + RLS
+      |
+      v
+public.get_document / put_document / delete_document
+      |
+      v
+public.documents  <- canonical data
 ```
 
-## ディレクトリ
+原則:
 
-- `00_Inbox/`: 未整理の一時入口
-- `10_Daily/`: 日付に紐づく記録
-- `20_Projects/`: 完了条件のある活動
-- `30_Areas/`: 継続的に管理する領域
-- `40_Resources/`: 再利用可能な知識
-- `50_Shared/`: 共同Vaultへの導線・共有境界
-- `90_Archive/`: 現在の第一参照先ではない情報
-- `.agents/`: AI Skill routing
-- `templates/`: 新規Markdownの雛形
-- `integrations/`: 外部サービスとの境界
-- `docs/`: 恒久設計
+- Supabase は必須依存です。利用不能時に GitHub Markdown を第二正本として書き始めません。
+- GitHub repository に実ユーザーの document body、credential、token、個人情報を保存しません。
+- document identity は UUID で固定し、path rename で identity を変えません。
+- write は optimistic version check を行い、成功後に同じ document identity を read-back します。
+- Agent / client の通常 read/write は semantic RPC を使用します。table schema を public contract にしません。
+- migration / policy / architecture を増やす前に、既存境界で解決できるか確認します。
 
-投資用途は `30_Areas/Investing/` を入口にします。
+## Quick start
 
-## 共同Vault
+1. Supabase project を作成します。
+2. Supabase CLI で project を link します。
+3. `supabase/migrations/` を適用します。
+4. client には `SUPABASE_URL` と publishable/anon key を設定します。
+5. user を Supabase Auth で認証し、最初の `vaults` row を作成します。
+6. document 操作は `get_document`, `put_document`, `delete_document` RPC を使用します。
 
-共同Vault: `hiroyuki9614/hr-vault`
+詳細は `docs/ARCHITECTURE.md` と `supabase/README.md` を参照してください。
 
-自動同期はしません。共有は必ず明示的に行い、共有先の `AGENTS.md` と `config/permissions.yml` による許可を確認してからwriteします。共有後に同じ対象をread-backできた共同情報だけ `hr-vault` を正本とします。
+## Repository scope
 
-permission policyを確認できない場合やwrite/read-backに失敗した場合は共有未成立として個人側の正本を維持します。
+含むもの:
 
-詳細は `docs/SHARED_VAULT_CONTRACT.md` を参照してください。
+- Supabase schema / RLS / RPC migrations
+- public architecture contract
+- AI Agent rules
+- synthetic templates / examples
+- architecture regression check
 
-## 設計書
+含まないもの:
 
-- `docs/PARTNER_VAULT_LITE_DESIGN.md`
-- `docs/SHARED_VAULT_CONTRACT.md`
+- 個人 Vault の実データ
+- shared/private Vault の mirror
+- credential / secret
+- VPS / scheduler / notification runtime
+- generic Control Plane / Work Context / recovery machinery
+
+## Validation
+
+```bash
+python -m unittest tests/test_architecture_check.py
+python tooling/architecture_check.py
+```

@@ -1,37 +1,42 @@
-schema_version: 1
+schema_version: 2
 
-vault:
-  kind: personal
-  canonical_repository: hiroyuki9614/vault
-  storage: markdown_git
+repository:
+  full_name: hiroyuki9614/vault
+  role: public_reference_implementation
+  visibility_required: public
 
-privacy:
-  require_private_for_personal_data: true
+canonical:
+  mutable_vault_data: supabase_postgresql
+  github_repository_data_canonical: false
+  document_identity: public.documents.id
+  document_locator: public.documents.path
+
+supabase:
+  required: true
+  auth_required: true
+  rls_required: true
+  project_ref_in_repository: forbidden
   secrets_in_repository: forbidden
+  runtime_configuration:
+    url: SUPABASE_URL
+    public_key: SUPABASE_ANON_KEY
+  semantic_rpcs:
+    - public.get_document
+    - public.put_document
+    - public.delete_document
 
-shared_vault:
-  enabled: true
-  repository: hiroyuki9614/hr-vault
-  mode: explicit_publish
-  auto_sync: false
-  read_policy: explicit_shared_context_only
-  write_policy: explicit_share_only
-  canonical_after_verified_publish: shared_vault
-  fallback_on_unavailable: keep_personal_source_unchanged
-  target_policy:
-    agents_path: AGENTS.md
-    permissions_path: config/permissions.yml
-    require_policy_read: true
-    require_explicit_allow_for_write: true
-    fail_closed_on_policy_unavailable: true
+write_contract:
+  optimistic_concurrency: true
+  expected_version_required_for_update: true
+  same_identity_readback: true
 
-integrations:
-  supabase:
-    required: false
-    role: structured_machine_state_only
-  notifications:
-    required: false
-    implementation: external_toolkit_preferred
-  scripts:
-    required: false
-    implementation: external_toolkit_preferred
+github:
+  role: code_contract_migrations_templates_only
+  user_data_storage: forbidden
+  supabase_outage_write_fallback: forbidden
+
+runtime:
+  vps: external
+  scheduler: external
+  notifications: external
+  control_plane: not_in_this_repository
