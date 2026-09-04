@@ -53,6 +53,24 @@ describe('measurement policy', () => {
     });
   });
 
+  it('canonicalizes equivalent RFC3339 timezone representations', () => {
+    expect(
+      planMeasurementRun({
+        id: RUN_ID,
+        vaultId: VAULT_ID,
+        kind: 'task',
+        name: 'timezone-normalization',
+        status: 'completed',
+        startedAt: '2026-09-04T21:00:00+09:00',
+        finishedAt: '2026-09-04T21:00:01+09:00',
+      }),
+    ).toMatchObject({
+      startedAt: '2026-09-04T12:00:00.000Z',
+      finishedAt: '2026-09-04T12:00:01.000Z',
+      durationMs: 1000,
+    });
+  });
+
   it('does not invent optional metrics when they are unavailable', () => {
     expect(
       planMeasurementRun({
@@ -71,8 +89,8 @@ describe('measurement policy', () => {
       name: 'requirements-guard',
       skillIds: [],
       status: 'blocked',
-      startedAt: '2026-09-04T12:00:00Z',
-      finishedAt: '2026-09-04T12:00:00Z',
+      startedAt: '2026-09-04T12:00:00.000Z',
+      finishedAt: '2026-09-04T12:00:00.000Z',
       durationMs: 0,
     });
   });
