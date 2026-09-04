@@ -108,4 +108,18 @@ All document RPCs use `SECURITY INVOKER`; RLS remains authoritative.
 - owner/editor/viewer: document read
 - unauthenticated: no data access
 
-Production acceptance should verify these roles with synthetic users in the target environment.
+`put_document` and `delete_document` also check the semantic vault role before mutation/replay reconciliation. A non-writer receives `permission_denied` before exact-replay logic is evaluated. This prevents a viewer who can read the current row from receiving a write-shaped success result merely because an already-committed state happens to match a replay request.
+
+The authorization guard complements RLS; it does not replace it.
+
+## Executable database contract
+
+The repository CI runs `.github/workflows/database-contract.yml` on PostgreSQL with synthetic identities only. The workflow:
+
+1. bootstraps the minimal `auth.users` / `auth.uid()` compatibility surface needed by the migrations;
+2. applies every file in `supabase/migrations/*.sql` in order with `ON_ERROR_STOP`;
+3. executes `tests/postgres/document-rls-acceptance.sql`.
+
+The acceptance suite covers owner/editor/viewer/authenticated-outsider/anon access, create/update replay behavior, version/path/idempotency conflicts, owner-only membership administration, and delete read-back.
+
+Production acceptance must still verify the same contract against the target organization's real Supabase Auth/project configuration.
