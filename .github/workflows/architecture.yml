@@ -42,7 +42,7 @@ jobs:
       - name: Validate Apache reverse proxy configuration
         run: |
           set -euo pipefail
-          sudo a2enmod ssl proxy proxy_http headers setenvif
+          sudo a2enmod ssl proxy proxy_http headers setenvif unique_id
           sudo install -d -o root -g root -m 0755 /var/www/vault-empty
           sudo cp deploy/apache/vault.conf.example /etc/apache2/sites-available/vault-ci.conf
           sudo sed -i 's#/etc/letsencrypt/live/vault.example.com/fullchain.pem#/etc/ssl/certs/ssl-cert-snakeoil.pem#' /etc/apache2/sites-available/vault-ci.conf
@@ -108,7 +108,10 @@ jobs:
 
           apache_ready=0
           for _ in $(seq 1 30); do
-            if curl --insecure --fail --silent --resolve vault.example.com:443:127.0.0.1 https://vault.example.com/health/live >/tmp/vault-apache-health.json; then
+            if curl --insecure --fail --silent \
+              --resolve vault.example.com:443:127.0.0.1 \
+              --header 'X-Request-ID: attacker-controlled-request-id' \
+              https://vault.example.com/health/live >/tmp/vault-apache-health.json; then
               apache_ready=1
               break
             fi
@@ -116,6 +119,11 @@ jobs:
           done
           test "$apache_ready" -eq 1
           grep -q '"status":"ok"' /tmp/vault-apache-health.json
+          grep -q '"requestId":"' /tmp/vault-apache-health.json
+          if grep -q 'attacker-controlled-request-id' /tmp/vault-apache-health.json; then
+            echo 'Apache did not replace the untrusted X-Request-ID' >&2
+            exit 1
+          fi
 
           anonymous_status=$(curl --insecure --silent --output /tmp/vault-apache-anon.json --write-out '%{http_code}' \
             --resolve vault.example.com:443:127.0.0.1 \
@@ -148,6 +156,12 @@ jobs:
 
       - name: Check architecture
         run: python tooling/architecture_check.py
+
+      - name: Test Apache proxy hardening checker
+        run: python -m unittest tests/test_apache_proxy_check.py
+
+      - name: Check Apache proxy hardening
+        run: python tooling/apache_proxy_check.py
 
       - name: Test GitHub governance contract checker
         run: python -m unittest tests/test_github_governance_check.py

@@ -11,6 +11,7 @@ Internet / internal client
 Apache :443
   TLS termination
   request size / timeout boundary
+  trusted request correlation id
   reverse-proxy headers
         |
         v
@@ -41,6 +42,8 @@ Authorization: Bearer <Supabase user access token>
 ```
 
 The Apache reference vhost preserves the incoming Authorization value at the trusted proxy boundary. The Node adapter forwards that user access token to the named semantic Supabase RPC together with the configured publishable/anon key. Supabase Auth + RLS remain authoritative.
+
+Correlation identity is different from caller identity. Clients must not control the request ID used for operational correlation. The reference vhost enables `mod_unique_id` and replaces any incoming `X-Request-ID` with Apache's `UNIQUE_ID` before proxying to Node. Node returns that trusted value in the response and structured request log. Direct loopback Node requests that do not pass through Apache still generate a UUID when no acceptable request ID is supplied.
 
 Do not log or persist the Authorization header, captured Authorization environment variable, Supabase key, user token, or request body.
 
@@ -116,12 +119,12 @@ Reference configuration:
 deploy/apache/vault.conf.example
 ```
 
-The reference vhost uses `mod_ssl`, `mod_proxy`, `mod_proxy_http`, `mod_headers`, and `mod_setenvif`.
+The reference vhost uses `mod_ssl`, `mod_proxy`, `mod_proxy_http`, `mod_headers`, `mod_setenvif`, and `mod_unique_id`.
 
 On Debian/Ubuntu, enable the modules and create the intentionally empty fallback document root:
 
 ```bash
-sudo a2enmod ssl proxy proxy_http headers setenvif
+sudo a2enmod ssl proxy proxy_http headers setenvif unique_id
 sudo install -d -o root -g root -m 0755 /var/www/vault-empty
 ```
 
@@ -143,6 +146,7 @@ The reference config:
 - keeps `ProxyRequests Off` so the server is not a forward proxy;
 - proxies only `/v1/` and health endpoints to `127.0.0.1:3100`;
 - explicitly preserves the caller Authorization header without logging it;
+- replaces caller-controlled `X-Request-ID` with `mod_unique_id`'s `UNIQUE_ID` before proxying;
 - sets `X-Forwarded-Proto: https` at the trusted proxy boundary;
 - leaves Host preservation disabled because the Node runtime does not require the public Host value;
 - limits request bodies to 1 MiB and bounds request-header size/count;
@@ -213,13 +217,14 @@ Before routing production traffic, verify:
 5. `apachectl configtest` returns `Syntax OK` before reload.
 6. HTTP redirects to the intended fixed production hostname.
 7. HTTPS health through Apache succeeds.
-8. anonymous `/v1/*` returns 401.
-9. non-JSON authenticated POST returns 415.
-10. owner/editor/viewer RLS behavior matches the database contract.
-11. Apache and Node logs contain request correlation data but no Authorization/token/key/body values.
-12. Supabase outage returns a bounded 503 rather than creating a second canonical store.
-13. SIGTERM stops the Node service cleanly through systemd.
-14. non-proxied paths do not serve repository/application files.
+8. a caller-supplied `X-Request-ID` is replaced by a different Apache-generated correlation ID.
+9. anonymous `/v1/*` returns 401.
+10. non-JSON authenticated POST returns 415.
+11. owner/editor/viewer RLS behavior matches the database contract.
+12. Apache and Node logs contain the same trusted request correlation ID but no Authorization/token/key/body values.
+13. Supabase outage returns a bounded 503 rather than creating a second canonical store.
+14. SIGTERM stops the Node service cleanly through systemd.
+15. non-proxied paths do not serve repository/application files.
 
 ## Organization-owned controls
 
