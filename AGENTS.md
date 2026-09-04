@@ -81,6 +81,7 @@ subject operation
 Rules:
 
 - record terminal Agent/Skill/task snapshots through `measurement/public.ts`.
+- preserve `not_applicable` as a first-class Skill measurement status; do not silently remap it to `completed`.
 - caller supplies timestamps; core derives duration and does not read a clock.
 - exact same-run replay may be idempotent; divergent same-ID replay fails as `measurement_conflict`.
 - raw prompt text, user/model input-output bodies, employee identity and company-specific KPI schema do not belong in the public Measurement contract.
@@ -164,6 +165,11 @@ Public Skills are reusable task contracts. Their existence or `effects` metadata
 - `dependency-boundary`
 - `functional-decomposition`
 - `configuration-boundary`
+
+### Skill lifecycle / observability
+
+- `skill-creation`
+- `skill-measurement`
 
 Use only material Skills. Do not create extra workflow/review stacks after acceptance is satisfied.
 

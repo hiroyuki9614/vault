@@ -1,5 +1,5 @@
 {
-  "schema_version": 11,
+  "schema_version": 12,
   "canonical_data_backend": "supabase",
   "supabase_required": true,
   "github_data_canonical": false,
@@ -44,6 +44,9 @@
     ".github/workflows/codeql.yml",
     ".github/workflows/dependency-vulnerability-scan.yml",
     ".github/workflows/database-contract.yml",
+    ".agents/SKILLS_INDEX.md",
+    ".agents/skills/skill-creation/SKILL.md",
+    ".agents/skills/skill-measurement/SKILL.md",
     "config/github-main-ruleset-contract.json",
     "tooling/github_governance_check.py",
     "tests/test_github_governance_check.py",
@@ -79,9 +82,11 @@
     "supabase/migrations/202609040002_idempotent_document_create.sql",
     "supabase/migrations/202609040003_document_write_authorization.sql",
     "supabase/migrations/202609040004_measurement_runs.sql",
+    "supabase/migrations/202609040005_measurement_not_applicable.sql",
     "tests/postgres/supabase-auth-bootstrap.sql",
     "tests/postgres/document-rls-acceptance.sql",
-    "tests/postgres/measurement-rls-acceptance.sql"
+    "tests/postgres/measurement-rls-acceptance.sql",
+    "tests/postgres/skill-measurement-status-acceptance.sql"
   ],
   "required_rpc_names": [
     "get_document",
@@ -95,7 +100,8 @@
     "path_conflict",
     "permission_denied",
     "record_measurement_run",
-    "measurement_conflict"
+    "measurement_conflict",
+    "not_applicable"
   ],
   "core_forbidden_fragments": [
     "supabase",

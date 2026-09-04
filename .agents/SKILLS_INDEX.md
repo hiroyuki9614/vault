@@ -23,6 +23,8 @@ status: public_reference
 | dependency-boundary | ownership、public/private境界、dependency direction、foreign internal access、cycle、hard dependencyがmaterial | `.agents/skills/dependency-boundary/SKILL.md` |
 | functional-decomposition | meaningful decisionとI/O・clock・random・environment等が同じ処理に絡む | `.agents/skills/functional-decomposition/SKILL.md` |
 | configuration-boundary | runtime/deployment/provider/secret/derived valueのownershipとvariation axisがmaterial | `.agents/skills/configuration-boundary/SKILL.md` |
+| skill-creation | recurringなAgent作業を新しいPublic Skillとして正本化し、重複回避・type/trait/effect・routingを固定する | `.agents/skills/skill-creation/SKILL.md` |
+| skill-measurement | target Skillのterminal outcomeを既存Measurementへprivacy-minimizedかつbest-effortで記録する | `.agents/skills/skill-measurement/SKILL.md` |
 
 ## Skill families
 
@@ -75,6 +77,16 @@ Git writeを安全に保存・publishするか?
 
 この値はcode / config / provider / secret / derivedのどこに属するか?
   -> configuration-boundary
+```
+
+### Skill lifecycle / observability
+
+```text
+新しい再利用Skillを追加すべきか、どう正本化するか?
+  -> skill-creation
+
+実行済みSkillを比較可能なtelemetryとして残すか?
+  -> skill-measurement
 ```
 
 ## Shared contract

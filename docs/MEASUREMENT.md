@@ -28,7 +28,7 @@ taskType?           reusable task classification
 provider? / model?  model execution identity when known
 promptRef?          stable prompt/version reference only
 skillIds[]          Skills materially used by the run
-status              completed | failed | blocked | cancelled
+status              completed | not_applicable | failed | blocked | cancelled
 startedAt/finishedAt caller-supplied RFC3339 timestamps
 durationMs          derived by the pure core
 input/output tokens optional aggregate counters
@@ -36,6 +36,8 @@ costMicrousd        optional integer micro-USD cost
 correctionCount     optional correction/rework count
 humanIntervention   optional coarse human-intervention signal
 ```
+
+`not_applicable` is a first-class terminal status so Skill routing/applicability outcomes are not silently collapsed into `completed`.
 
 The public schema intentionally does not contain raw prompt text, user input, model output, document content, customer identity, employee identity, or company-specific KPI fields.
 
@@ -65,6 +67,21 @@ It uses the same caller Bearer identity and publishable/anon-key transport as th
 The HTTP request accepts only the provider-free Measurement command fields. Raw prompt/input/output bodies have no Measurement field and are not forwarded by the endpoint.
 
 A successful record returns HTTP 200 with `measurement.status = recorded`. Validation, authorization, conflict, and upstream failures are mapped to bounded HTTP errors. The subject operation remains responsible for treating telemetry as optional; callers must not retroactively fail successful subject work because this separate telemetry call failed.
+
+## Skill measurement convention
+
+When the `skill-measurement` Skill records one Skill run, the recommended identity is:
+
+```text
+kind      = skill
+name      = <skill-id>@<version>
+skillIds  = [<skill-id>]
+status    = target Skill terminal outcome
+```
+
+`completed / not_applicable / blocked / failed` are preserved without remapping. `cancelled` is reserved for an interrupted run.
+
+Do not recursively measure `skill-measurement` through itself.
 
 ## Best-effort runtime
 

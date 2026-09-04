@@ -1,5 +1,5 @@
 export type MeasurementRunKind = 'agent' | 'skill' | 'task';
-export type MeasurementRunStatus = 'completed' | 'failed' | 'blocked' | 'cancelled';
+export type MeasurementRunStatus = 'completed' | 'not_applicable' | 'failed' | 'blocked' | 'cancelled';
 
 export type MeasurementValidationErrorCode =
   | 'invalid_uuid'
