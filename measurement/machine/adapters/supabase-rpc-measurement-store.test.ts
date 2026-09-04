@@ -50,48 +50,65 @@ function row(overrides: Readonly<Record<string, unknown>> = {}): Record<string, 
   };
 }
 
+function clientWith(
+  handler: (name: string, args: Readonly<Record<string, unknown>>) => unknown,
+): SupabaseMeasurementRpcClient {
+  return {
+    async rpc<T>(name: string, args: Readonly<Record<string, unknown>>) {
+      return {
+        data: handler(name, args) as T,
+        error: null,
+      };
+    },
+  };
+}
+
+function failingClient(message: string, code = 'P0001'): SupabaseMeasurementRpcClient {
+  return {
+    async rpc<T>() {
+      return {
+        data: null as T | null,
+        error: { message, code },
+      };
+    },
+  };
+}
+
 describe('Supabase RPC measurement adapter', () => {
   it('maps a terminal run to the semantic RPC and provider-free record', async () => {
-    const client: SupabaseMeasurementRpcClient = {
-      async rpc(name, args) {
-        expect(name).toBe('record_measurement_run');
-        expect(args).toMatchObject({
-          p_run_id: RUN_ID,
-          p_vault_id: VAULT_ID,
-          p_duration_ms: 1000,
-          p_cost_microusd: 42,
-        });
-        return { data: [row()], error: null };
-      },
-    };
+    const client = clientWith((name, args) => {
+      expect(name).toBe('record_measurement_run');
+      expect(args).toMatchObject({
+        p_run_id: RUN_ID,
+        p_vault_id: VAULT_ID,
+        p_duration_ms: 1000,
+        p_cost_microusd: 42,
+      });
+      return [row()];
+    });
 
     const store = createSupabaseRpcMeasurementStore(client);
     await expect(store.record(run)).resolves.toEqual(run);
   });
 
   it('maps divergent replay to a semantic measurement conflict', async () => {
-    const client: SupabaseMeasurementRpcClient = {
-      async rpc() {
-        return { data: null, error: { message: 'measurement_conflict', code: 'P0001' } };
-      },
-    };
+    const store = createSupabaseRpcMeasurementStore(failingClient('measurement_conflict'));
 
-    const store = createSupabaseRpcMeasurementStore(client);
-    await expect(store.record(run)).rejects.toMatchObject<Partial<MeasurementStoreError>>({
+    const failure = store.record(run);
+    await expect(failure).rejects.toBeInstanceOf(MeasurementStoreError);
+    await expect(failure).rejects.toMatchObject({
       code: 'measurement_conflict',
       retryable: false,
     });
   });
 
   it('rejects provider rows whose derived duration is inconsistent', async () => {
-    const client: SupabaseMeasurementRpcClient = {
-      async rpc() {
-        return { data: [row({ duration_ms: 999 })], error: null };
-      },
-    };
-
+    const client = clientWith(() => [row({ duration_ms: 999 })]);
     const store = createSupabaseRpcMeasurementStore(client);
-    await expect(store.record(run)).rejects.toMatchObject<Partial<MeasurementStoreError>>({
+
+    const failure = store.record(run);
+    await expect(failure).rejects.toBeInstanceOf(MeasurementStoreError);
+    await expect(failure).rejects.toMatchObject({
       code: 'invalid_response',
     });
   });
