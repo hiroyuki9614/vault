@@ -34,6 +34,7 @@ def check(root: Path = ROOT) -> list[str]:
     if config.get("code_scanning_workflow_required") is not True: errors.append("code_scanning_workflow_required must be true")
     if config.get("dependency_vulnerability_scan_required") is not True: errors.append("dependency_vulnerability_scan_required must be true")
     if config.get("database_contract_test_required") is not True: errors.append("database_contract_test_required must be true")
+    if config.get("nginx_reverse_proxy_runtime_required") is not True: errors.append("nginx_reverse_proxy_runtime_required must be true")
 
     for path in config.get("required_paths", []):
         if not (root / path).exists(): errors.append(f"missing required path: {path}")
@@ -47,6 +48,10 @@ def check(root: Path = ROOT) -> list[str]:
         for name, version in package.get("devDependencies", {}).items():
             if not isinstance(version, str) or version.startswith(("^", "~", ">", "<", "*")):
                 errors.append(f"devDependency must be exact: {name}={version}")
+        scripts = package.get("scripts", {})
+        if scripts.get("build") != "tsc -p tsconfig.build.json": errors.append("production build must use tsconfig.build.json")
+        if scripts.get("start") != "node dist/server/main.js": errors.append("production start must execute dist/server/main.js")
+        if "npm run build" not in scripts.get("check:ts", ""): errors.append("TypeScript check must include production build")
 
     workflows_root = root / ".github" / "workflows"
     if workflows_root.exists():
@@ -71,6 +76,7 @@ def check(root: Path = ROOT) -> list[str]:
         text = architecture_workflow.read_text(encoding="utf-8")
         if "npm ci" not in text: errors.append("architecture workflow must use npm ci")
         if "npm install" in text: errors.append("architecture workflow must not use npm install")
+        if "npm run build" not in text: errors.append("architecture workflow must build the production runtime")
 
     codeql_workflow = workflows_root / "codeql.yml"
     if codeql_workflow.exists():
@@ -173,10 +179,102 @@ def check(root: Path = ROOT) -> list[str]:
     if public_api.exists() and "supabase" in public_api.read_text(encoding="utf-8").lower():
         errors.append("documents public API must remain provider-free")
 
+    runtime_config = root / "server" / "config.ts"
+    if runtime_config.exists():
+        text = runtime_config.read_text(encoding="utf-8")
+        for fragment in ("'127.0.0.1'", "VAULT_ALLOW_PUBLIC_BIND", "SUPABASE_RPC_TIMEOUT_MS", "VAULT_MAX_BODY_BYTES"):
+            if fragment not in text: errors.append(f"server runtime configuration missing invariant: {fragment}")
+        if "process.env" in text: errors.append("server config parser must receive environment explicitly")
+        if "SUPABASE_SERVICE_ROLE" in text: errors.append("normal server runtime must not accept a Supabase service-role credential")
+
+    http_app = root / "server" / "http-app.ts"
+    if http_app.exists():
+        text = http_app.read_text(encoding="utf-8")
+        for fragment in (
+            "/health/live",
+            "/health/ready",
+            "/v1/documents/get-by-path",
+            "/v1/documents/get-by-id",
+            "/v1/documents/put",
+            "/v1/documents/delete",
+            "requireBearer",
+            "config.maxBodyBytes",
+            "createSupabaseRpcDocumentStore",
+            "DocumentStoreError",
+            "x-request-id",
+        ):
+            if fragment not in text: errors.append(f"HTTP server missing invariant: {fragment}")
+        if "SUPABASE_SERVICE_ROLE" in text: errors.append("HTTP server must not use service-role credentials")
+
+    http_rpc_client = root / "server" / "supabase-http-rpc-client.ts"
+    if http_rpc_client.exists():
+        text = http_rpc_client.read_text(encoding="utf-8")
+        for fragment in (
+            "authorization: `Bearer ${config.accessToken}`",
+            "apikey: config.anonKey",
+            "AbortSignal.timeout(config.timeoutMs)",
+            "/rest/v1/rpc/",
+        ):
+            if fragment not in text: errors.append(f"Supabase HTTP RPC client missing invariant: {fragment}")
+        if "service_role" in text.lower(): errors.append("Supabase HTTP RPC client must remain user-bearer scoped")
+
+    server_main = root / "server" / "main.ts"
+    if server_main.exists():
+        text = server_main.read_text(encoding="utf-8")
+        for fragment in ("process.env", "SIGTERM", "SIGINT", "server.close(", "server.closeAllConnections()"):
+            if fragment not in text: errors.append(f"server lifecycle missing invariant: {fragment}")
+
+    env_example = root / ".env.example"
+    if env_example.exists():
+        text = env_example.read_text(encoding="utf-8")
+        if "VAULT_HOST=127.0.0.1" not in text: errors.append("example runtime environment must bind loopback")
+        if "VAULT_ALLOW_PUBLIC_BIND=true" in text: errors.append("example runtime environment must not opt into public Node bind")
+        if "SUPABASE_SERVICE_ROLE" in text: errors.append("example runtime environment must not request service-role credentials")
+
+    nginx = root / "deploy" / "nginx" / "vault.conf.example"
+    if nginx.exists():
+        text = nginx.read_text(encoding="utf-8")
+        for fragment in (
+            "server 127.0.0.1:3100;",
+            "location /v1/",
+            "proxy_set_header Authorization $http_authorization;",
+            "proxy_set_header X-Request-ID $request_id;",
+            "client_max_body_size 1m;",
+            "proxy_connect_timeout 2s;",
+            "proxy_read_timeout 15s;",
+        ):
+            if fragment not in text: errors.append(f"Nginx deployment missing invariant: {fragment}")
+        if "0.0.0.0:3100" in text: errors.append("Nginx must proxy to the loopback Node upstream")
+
+    systemd = root / "deploy" / "systemd" / "vault.service.example"
+    if systemd.exists():
+        text = systemd.read_text(encoding="utf-8")
+        for fragment in (
+            "User=vault",
+            "EnvironmentFile=/etc/vault/vault.env",
+            "ExecStart=/usr/bin/node /opt/vault/current/dist/server/main.js",
+            "NoNewPrivileges=true",
+            "ProtectSystem=strict",
+            "ProtectHome=true",
+            "CapabilityBoundingSet=",
+            "KillSignal=SIGTERM",
+        ):
+            if fragment not in text: errors.append(f"systemd deployment missing invariant: {fragment}")
+
+    tsconfig = root / "tsconfig.json"
+    if tsconfig.exists() and '"server/**/*.ts"' not in tsconfig.read_text(encoding="utf-8"):
+        errors.append("TypeScript typecheck must include server runtime")
+
+    build_config = root / "tsconfig.build.json"
+    if build_config.exists():
+        text = build_config.read_text(encoding="utf-8")
+        for fragment in ('"noEmit": false', '"outDir": "dist"', '"server/**/*.ts"', '"**/*.test.ts"'):
+            if fragment not in text: errors.append(f"production build config missing invariant: {fragment}")
+
     codeowners = root / ".github" / "CODEOWNERS"
     if codeowners.exists():
         text = codeowners.read_text(encoding="utf-8")
-        for path in ("/supabase/migrations/", "/documents/machine/core/", "/.github/"):
+        for path in ("/supabase/migrations/", "/documents/machine/core/", "/server/", "/deploy/", "/.github/"):
             if path not in text: errors.append(f"CODEOWNERS missing security-critical path: {path}")
 
     forbidden_text = ["kind: personal", "partner vault", "canonical_repository: hiroyuki9614/vault", "supabase_outage_write_fallback: allowed"]
@@ -195,7 +293,7 @@ def main() -> int:
     if errors:
         for error in errors: print(f"FAIL: {error}")
         return 1
-    print("PASS: public vault meets the enterprise executable database contract baseline")
+    print("PASS: public vault meets the enterprise nginx/database contract baseline")
     return 0
 
 
