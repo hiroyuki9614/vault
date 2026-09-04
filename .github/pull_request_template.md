@@ -6,6 +6,7 @@ Describe the change and the capability/responsibility it affects.
 
 - [ ] `npm run check` passes
 - [ ] Architecture workflow passes
+- [ ] Database contract workflow passes when migrations/RLS/RPC behavior can be affected
 - [ ] CodeQL passes when applicable
 - [ ] OSV dependency vulnerability scan passes
 - [ ] GitHub Dependency Review passes when Dependency Graph is enabled and the repository requires it
