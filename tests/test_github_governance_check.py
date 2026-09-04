@@ -48,6 +48,22 @@ class GithubGovernanceCheckTest(unittest.TestCase):
         contract_path.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
         self.assertTrue(any("block_force_pushes" in error for error in check(repo)))
 
+    def test_release_tag_update_restriction_is_required(self):
+        repo = self.copy_repo()
+        contract_path = repo / "config" / "github-release-tag-ruleset-contract.json"
+        contract = json.loads(contract_path.read_text(encoding="utf-8"))
+        contract["restrict_updates"] = False
+        contract_path.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+        self.assertTrue(any("restrict_updates" in error for error in check(repo)))
+
+    def test_release_tag_pattern_must_remain_version_scoped(self):
+        repo = self.copy_repo()
+        contract_path = repo / "config" / "github-release-tag-ruleset-contract.json"
+        contract = json.loads(contract_path.read_text(encoding="utf-8"))
+        contract["target_pattern"] = "*"
+        contract_path.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+        self.assertTrue(any("target_pattern" in error for error in check(repo)))
+
 
 if __name__ == "__main__":
     unittest.main()
