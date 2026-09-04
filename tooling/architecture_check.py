@@ -56,6 +56,34 @@ def check(root: Path = ROOT) -> list[str]:
         if scripts.get("start") != "node dist/server/main.js": errors.append("production start must execute dist/server/main.js")
         if "npm run build" not in scripts.get("check:ts", ""): errors.append("TypeScript check must include production build")
 
+    for dockerfile_relative in ("deploy/docker/Dockerfile.runtime", "deploy/docker/Dockerfile.apache"):
+        dockerfile = root / dockerfile_relative
+        if not dockerfile.exists():
+            continue
+        stage_aliases: set[str] = set()
+        for line_number, line in enumerate(dockerfile.read_text(encoding="utf-8").splitlines(), start=1):
+            match = re.match(
+                r"^\s*FROM(?:\s+--platform=\S+)?\s+(\S+)(?:\s+AS\s+([A-Za-z0-9_.-]+))?\s*$",
+                line,
+                flags=re.IGNORECASE,
+            )
+            if match is None:
+                continue
+            source = match.group(1)
+            alias = match.group(2)
+            normalized_source = source.lower()
+            if normalized_source != "scratch" and normalized_source not in stage_aliases:
+                image_name = source.split("@", 1)[0]
+                registry = image_name.split("/", 1)[0]
+                if "/" not in image_name or not (registry == "localhost" or "." in registry or ":" in registry):
+                    errors.append(
+                        f"Dockerfile external FROM must use a fully qualified registry reference: {dockerfile_relative}:{line_number}"
+                    )
+                if re.fullmatch(r".+@sha256:[0-9a-fA-F]{64}", source) is None:
+                    errors.append(f"Dockerfile external FROM must be digest pinned: {dockerfile_relative}:{line_number}")
+            if alias is not None:
+                stage_aliases.add(alias.lower())
+
     workflows_root = root / ".github" / "workflows"
     if workflows_root.exists():
         for workflow_path in sorted(workflows_root.glob("*.yml")):
