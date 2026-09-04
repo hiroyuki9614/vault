@@ -1,5 +1,5 @@
 {
-  "schema_version": 9,
+  "schema_version": 10,
   "canonical_data_backend": "supabase",
   "supabase_required": true,
   "github_data_canonical": false,
@@ -14,6 +14,7 @@
   "code_scanning_workflow_required": true,
   "dependency_vulnerability_scan_required": true,
   "database_contract_test_required": true,
+  "github_main_ruleset_contract_required": true,
   "reverse_proxy_runtime": "apache_http_server",
   "apache_reverse_proxy_runtime_required": true,
   "forbidden_top_level_paths": [
@@ -43,6 +44,9 @@
     ".github/workflows/codeql.yml",
     ".github/workflows/dependency-vulnerability-scan.yml",
     ".github/workflows/database-contract.yml",
+    "config/github-main-ruleset-contract.json",
+    "tooling/github_governance_check.py",
+    "tests/test_github_governance_check.py",
     "core/machine/main/repository.json",
     "core/machine/indexes/responsibilities.json",
     "documents/public.ts",
