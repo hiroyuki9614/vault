@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "canonical_data_backend": "supabase",
   "supabase_required": true,
   "github_data_canonical": false,
@@ -8,7 +8,11 @@
   "dependency_install": "npm_ci",
   "lockfile_required": true,
   "identity_read_back_required": true,
+  "idempotent_create_required": true,
   "semantic_store_errors_required": true,
+  "pinned_workflow_actions_required": true,
+  "code_scanning_workflow_required": true,
+  "dependency_review_workflow_required": true,
   "forbidden_top_level_paths": [
     "00_Inbox",
     "10_Daily",
@@ -27,7 +31,11 @@
     "package.json",
     "package-lock.json",
     "tsconfig.json",
+    ".github/CODEOWNERS",
     ".github/dependabot.yml",
+    ".github/workflows/architecture.yml",
+    ".github/workflows/codeql.yml",
+    ".github/workflows/dependency-review.yml",
     "core/machine/main/repository.json",
     "core/machine/indexes/responsibilities.json",
     "documents/public.ts",
@@ -38,15 +46,22 @@
     "documents/machine/runtime/document-service.ts",
     "docs/ARCHITECTURE.md",
     "docs/ENTERPRISE_READINESS.md",
+    "docs/REPOSITORY_GOVERNANCE.md",
     "supabase/README.md",
     "supabase/migrations/202608310001_supabase_first_vault.sql",
-    "supabase/migrations/202609040001_document_identity_read.sql"
+    "supabase/migrations/202609040001_document_identity_read.sql",
+    "supabase/migrations/202609040002_idempotent_document_create.sql"
   ],
   "required_rpc_names": [
     "get_document",
     "get_document_by_id",
     "put_document",
     "delete_document"
+  ],
+  "required_sql_fragments": [
+    "document_id_required",
+    "idempotency_conflict",
+    "path_conflict"
   ],
   "core_forbidden_fragments": [
     "supabase",
