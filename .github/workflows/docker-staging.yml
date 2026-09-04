@@ -1,0 +1,80 @@
+name: docker-staging
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-staging-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_ANON_KEY: synthetic-docker-ci-key
+      VAULT_STAGING_PORT: "18080"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Validate Compose model
+        run: docker compose -f deploy/docker/compose.staging.yml config --quiet
+
+      - name: Build staging images
+        run: docker compose -f deploy/docker/compose.staging.yml build --pull
+
+      - name: Smoke Apache and Node containers
+        run: |
+          set -euo pipefail
+          compose=(docker compose -f deploy/docker/compose.staging.yml)
+          cleanup() {
+            "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          "${compose[@]}" up -d
+
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl --fail --silent \
+              --header 'X-Request-ID: attacker-controlled-request-id' \
+              http://127.0.0.1:18080/health/live >/tmp/docker-vault-health.json; then
+              ready=1
+              break
+            fi
+            sleep 0.25
+          done
+          test "$ready" -eq 1
+          grep -q '"status":"ok"' /tmp/docker-vault-health.json
+          grep -q '"requestId":"' /tmp/docker-vault-health.json
+          if grep -q 'attacker-controlled-request-id' /tmp/docker-vault-health.json; then
+            echo 'Docker Apache did not replace the untrusted X-Request-ID' >&2
+            exit 1
+          fi
+
+          curl --fail --silent http://127.0.0.1:18080/health/ready | grep -q '"status":"ready"'
+
+          anonymous_status=$(curl --silent --output /tmp/docker-vault-anon.json --write-out '%{http_code}' \
+            --request POST http://127.0.0.1:18080/v1/not-a-route \
+            --header 'Content-Type: application/json' \
+            --data '{}')
+          test "$anonymous_status" = '401'
+          grep -q '"error":"unauthenticated"' /tmp/docker-vault-anon.json
+
+          apache_port=$("${compose[@]}" port apache 8080)
+          test "$apache_port" = '127.0.0.1:18080'
+          node_port=$("${compose[@]}" port vault-node 3100 2>/dev/null || true)
+          test -z "$node_port"
+
+          "${compose[@]}" ps
+
+          cleanup
+          trap - EXIT
