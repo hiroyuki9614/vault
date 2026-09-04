@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: architecture-${{ github.workflow }}-${{ github.ref }}
@@ -18,31 +18,15 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref }}
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: package.json
+          cache-dependency-path: package-lock.json
 
-      - name: Bootstrap lockfile
-        run: npm install --no-audit --no-fund
-
-      - name: Commit generated lockfile once
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('package-lock.json') != ''
-        env:
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        run: |
-          if git ls-files --error-unmatch package-lock.json >/dev/null 2>&1; then
-            exit 0
-          fi
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add package-lock.json
-          git commit -m "build: commit deterministic npm lockfile"
-          git push origin "HEAD:${HEAD_REF}"
+      - name: Install locked TypeScript dependencies
+        run: npm ci --no-audit --no-fund
 
       - name: Typecheck functional core
         run: npm run typecheck
