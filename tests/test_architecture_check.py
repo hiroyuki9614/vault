@@ -51,7 +51,11 @@ class ArchitectureCheckTest(unittest.TestCase):
         repo = self.copy_repo()
         contract = repo / "documents" / "machine" / "contracts" / "document.ts"
         contract.write_text(
-            contract.read_text(encoding="utf-8").replace("readonly id: string;", "readonly id?: string;", 1),
+            contract.read_text(encoding="utf-8").replace(
+                "readonly kind: 'create';\n      readonly id: string;",
+                "readonly kind: 'create';\n      readonly id?: string;",
+                1,
+            ),
             encoding="utf-8",
         )
         self.assertTrue(any("caller-generated document identity" in error for error in check(repo)))
