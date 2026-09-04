@@ -53,7 +53,7 @@ jobs:
             echo >&2
             printf 'anonymous_status=%s\n' "${anonymous_status:-<unset>}" >&2
             printf 'apache_port=%s\n' "${apache_port:-<unset>}" >&2
-            printf 'node_port=%s\n' "${node_port:-<unset>}" >&2
+            printf 'node_bindings=%s\n' "${node_bindings:-<unset>}" >&2
             echo '--- docker compose ps ---' >&2
             "${compose[@]}" ps >&2 || true
             apache_id=$("${compose[@]}" ps -q apache 2>/dev/null || true)
@@ -101,8 +101,10 @@ jobs:
 
           apache_port=$("${compose[@]}" port apache 8080)
           test "$apache_port" = '127.0.0.1:18080'
-          node_port=$("${compose[@]}" port vault-node 3100 2>/dev/null || true)
-          test -z "$node_port"
+          node_id=$("${compose[@]}" ps -q vault-node)
+          test -n "$node_id"
+          node_bindings=$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$node_id")
+          test "$node_bindings" = '{}'
 
           diagnostics
           trap - ERR
