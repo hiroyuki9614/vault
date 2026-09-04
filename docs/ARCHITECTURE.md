@@ -4,7 +4,7 @@
 
 This repository is a public Supabase-first Vault Reference Implementation, not a private/personal Vault instance.
 
-Executable policy is TypeScript and follows the same responsibility-first / Functional Core + Effectful Adapter structure used by Personal Vault v3.
+Executable policy is TypeScript and follows a responsibility-first / Functional Core + Effectful Adapter structure.
 
 ```text
 Caller
@@ -116,9 +116,28 @@ PutDocumentCommand
   -> completed
 ```
 
-Create mutation must return version `1`. Update mutation must return `expectedVersion + 1`.
+Create requires caller-generated stable document identity and returns version `1`. Update returns `expectedVersion + 1`.
 
 Read-back uses immutable document identity, not path.
+
+### Retry semantics
+
+The database RPC is designed for ambiguous transport outcomes without adding a generic idempotency service.
+
+```text
+create(id=A, state=X)
+  first commit          -> A/version 1
+  exact replay          -> same A/version 1
+  same A/different state-> idempotency_conflict
+  same path/different id-> path_conflict
+
+update(id=A, expected=N, state=Y)
+  first commit          -> A/version N+1
+  exact replay          -> same A/version N+1
+  divergent replay      -> version_conflict
+```
+
+The runtime/core do not own retry timers. Caller owns retry cadence and delete reconciliation.
 
 ### Delete path
 
@@ -182,6 +201,8 @@ Semantic codes:
 ```text
 not_found
 version_conflict
+idempotency_conflict
+path_conflict
 permission_denied
 unauthenticated
 invalid_request
@@ -190,7 +211,7 @@ invalid_response
 unknown
 ```
 
-Provider-specific error objects/messages do not cross the Port boundary. `unavailable` is retryable by default; retry policy is caller-owned.
+Provider-specific error objects/messages do not cross the Port boundary. `unavailable` denotes a transport/infrastructure condition that may be retried after applying operation-specific reconciliation.
 
 ## Security
 
@@ -202,6 +223,16 @@ Supabase Auth + RLS are mandatory.
 - unauthenticated: no data access
 
 Service-role credentials are administration/migration credentials and are excluded from normal runtime contracts.
+
+Repository security automation includes:
+
+- immutable commit SHA pinning for third-party GitHub Actions
+- CodeQL for JavaScript/TypeScript and Python with `security-extended`
+- pull-request dependency review
+- Dependabot updates
+- CODEOWNERS declarations for security-critical boundaries
+
+GitHub-side rulesets remain administrator-managed state; they are not simulated by runtime code.
 
 ## Failure boundary
 
@@ -223,8 +254,9 @@ The runtime toolchain is pinned at repository level:
 - exact direct dev dependency versions
 - committed `package-lock.json`
 - CI installs with `npm ci`
+- GitHub Actions referenced by immutable 40-hex commit SHA
 
-Dependabot proposes npm and GitHub Actions updates; updates still pass the same architecture/type/test gates.
+Dependabot proposes npm and GitHub Actions updates; updates still pass the same architecture/type/test/security gates.
 
 ## Verification
 
@@ -252,15 +284,19 @@ Architecture checker:
 - provider/effect fragments forbidden in core
 - provider-free public API
 - required semantic RPCs across versioned migrations
+- caller-generated create identity
+- idempotent create/update SQL invariants
 - exact direct dependencies / lockfile / `npm ci`
+- immutable workflow action pins
+- CodeQL / dependency-review / CODEOWNERS presence and minimum invariants
 
-CI runs strict TypeScript typecheck, Vitest and architecture checks.
+CI runs strict TypeScript typecheck, Vitest and architecture checks. Separate workflows run CodeQL and dependency review.
 
 ## Enterprise deployment boundary
 
-Repository-level engineering controls do not replace organization-level operations, compliance, backup, monitoring or incident response.
+Repository-level engineering controls do not replace organization-level operations, compliance, backup, monitoring, incident response or branch administration.
 
-See [`ENTERPRISE_READINESS.md`](ENTERPRISE_READINESS.md) and [`../SECURITY.md`](../SECURITY.md).
+See [`ENTERPRISE_READINESS.md`](ENTERPRISE_READINESS.md), [`REPOSITORY_GOVERNANCE.md`](REPOSITORY_GOVERNANCE.md), and [`../SECURITY.md`](../SECURITY.md).
 
 ## Growth stoppers
 
