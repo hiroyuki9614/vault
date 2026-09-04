@@ -11,7 +11,10 @@ const DOCUMENT_ID = '22222222-2222-4222-8222-222222222222';
 
 function clientWith(handler: (name: string, args: Readonly<Record<string, unknown>>) => unknown): SupabaseRpcClient {
   return {
-    async rpc<T>(name, args) {
+    async rpc<T>(
+      name: string,
+      args: Readonly<Record<string, unknown>>,
+    ) {
       return {
         data: handler(name, args) as T,
         error: null,
