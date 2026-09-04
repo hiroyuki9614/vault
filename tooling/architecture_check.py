@@ -35,7 +35,9 @@ def check(root: Path = ROOT) -> list[str]:
     if config.get("code_scanning_workflow_required") is not True: errors.append("code_scanning_workflow_required must be true")
     if config.get("dependency_vulnerability_scan_required") is not True: errors.append("dependency_vulnerability_scan_required must be true")
     if config.get("database_contract_test_required") is not True: errors.append("database_contract_test_required must be true")
-    if config.get("nginx_reverse_proxy_runtime_required") is not True: errors.append("nginx_reverse_proxy_runtime_required must be true")
+    if config.get("reverse_proxy_runtime") != "apache_http_server": errors.append("reverse_proxy_runtime must be apache_http_server")
+    if config.get("apache_reverse_proxy_runtime_required") is not True: errors.append("apache_reverse_proxy_runtime_required must be true")
+    if "nginx_reverse_proxy_runtime_required" in config: errors.append("superseded Nginx architecture flag must not remain")
 
     for path in config.get("required_paths", []):
         if not (root / path).exists(): errors.append(f"missing required path: {path}")
@@ -75,6 +77,8 @@ def check(root: Path = ROOT) -> list[str]:
     architecture_workflow = workflows_root / "architecture.yml"
     if architecture_workflow.exists():
         text = architecture_workflow.read_text(encoding="utf-8")
+        if "runs-on: ubuntu-24.04" not in text: errors.append("architecture workflow must pin ubuntu-24.04")
+        if "persist-credentials: false" not in text: errors.append("architecture checkout must not persist credentials")
         if "npm ci" not in text: errors.append("architecture workflow must use npm ci")
         if "npm install" in text: errors.append("architecture workflow must not use npm install")
         if "npm run build" not in text: errors.append("architecture workflow must build the production runtime")
@@ -86,6 +90,17 @@ def check(root: Path = ROOT) -> list[str]:
         ):
             if fragment not in text:
                 errors.append(f"architecture workflow missing production runtime smoke invariant: {fragment}")
+        for fragment in (
+            "sudo a2enmod ssl proxy proxy_http headers setenvif",
+            "deploy/apache/vault.conf.example",
+            "sudo apachectl configtest",
+            "--resolve vault.example.com:443:127.0.0.1",
+            "Authorization: Bearer synthetic-ci-token",
+            "test \"$anonymous_status\" = '401'",
+            "test \"$authenticated_status\" = '404'",
+        ):
+            if fragment not in text:
+                errors.append(f"architecture workflow missing Apache reverse-proxy invariant: {fragment}")
 
     codeql_workflow = workflows_root / "codeql.yml"
     if codeql_workflow.exists():
@@ -243,23 +258,38 @@ def check(root: Path = ROOT) -> list[str]:
         if "VAULT_ALLOW_PUBLIC_BIND=true" in text: errors.append("example runtime environment must not opt into public Node bind")
         if "SUPABASE_SERVICE_ROLE" in text: errors.append("example runtime environment must not request service-role credentials")
 
-    nginx = root / "deploy" / "nginx" / "vault.conf.example"
-    if nginx.exists():
-        text = nginx.read_text(encoding="utf-8")
+    apache = root / "deploy" / "apache" / "vault.conf.example"
+    if apache.exists():
+        text = apache.read_text(encoding="utf-8")
         for fragment in (
-            "server 127.0.0.1:3100;",
-            "return 301 https://vault.example.com$request_uri;",
-            "location /v1/",
-            'proxy_set_header Connection "";',
-            "proxy_set_header Authorization $http_authorization;",
-            "proxy_set_header X-Request-ID $request_id;",
-            "client_max_body_size 1m;",
-            "proxy_connect_timeout 2s;",
-            "proxy_read_timeout 15s;",
+            "Redirect permanent / https://vault.example.com/",
+            "SSLEngine on",
+            "ProxyRequests Off",
+            "ProxyPreserveHost Off",
+            "ProxyAddHeaders On",
+            "SetEnvIfNoCase Authorization",
+            'RequestHeader set Authorization "%{VAULT_AUTHORIZATION}e" env=VAULT_AUTHORIZATION',
+            'RequestHeader set X-Forwarded-Proto "https"',
+            "ProxyPass        /health/live  http://127.0.0.1:3100/health/live",
+            "ProxyPass        /health/ready http://127.0.0.1:3100/health/ready",
+            "ProxyPass        /v1/ http://127.0.0.1:3100/v1/",
+            "connectiontimeout=2 timeout=15 retry=0",
+            "LimitRequestBody 1048576",
+            "LimitRequestFieldSize 8190",
+            "LimitRequestFields 100",
+            "DocumentRoot /var/www/vault-empty",
+            "Options -Indexes",
+            "AllowOverride None",
         ):
-            if fragment not in text: errors.append(f"Nginx deployment missing invariant: {fragment}")
-        if "0.0.0.0:3100" in text: errors.append("Nginx must proxy to the loopback Node upstream")
-        if "https://$host$request_uri" in text: errors.append("Nginx HTTP redirect must not reflect an untrusted Host header")
+            if fragment not in text: errors.append(f"Apache deployment missing invariant: {fragment}")
+        active_text = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+        if re.search(r"^\s*ServerTokens\s+", active_text, flags=re.MULTILINE):
+            errors.append("Apache VirtualHost reference must not define server-global ServerTokens")
+        if "ProxyRequests On" in active_text: errors.append("Apache reverse proxy must not enable forward proxying")
+        if "0.0.0.0:3100" in text: errors.append("Apache must proxy to the loopback Node upstream")
+
+    for stale_path in (root / "deploy" / "nginx", root / "docs" / "NGINX_DEPLOYMENT.md"):
+        if stale_path.exists(): errors.append(f"superseded Nginx artifact must not remain: {stale_path.relative_to(root)}")
 
     systemd = root / "deploy" / "systemd" / "vault.service.example"
     if systemd.exists():
@@ -300,6 +330,17 @@ def check(root: Path = ROOT) -> list[str]:
         for needle in forbidden_text:
             if needle.lower() in text: errors.append(f"legacy contract remains in {relative}: {needle}")
 
+    for relative in (
+        "README.md",
+        "docs/ARCHITECTURE.md",
+        "docs/ENTERPRISE_READINESS.md",
+        "docs/APACHE_DEPLOYMENT.md",
+        ".github/pull_request_template.md",
+    ):
+        path = root / relative
+        if path.exists() and "nginx" in path.read_text(encoding="utf-8").lower():
+            errors.append(f"superseded Nginx wording remains in {relative}")
+
     return errors
 
 
@@ -308,7 +349,7 @@ def main() -> int:
     if errors:
         for error in errors: print(f"FAIL: {error}")
         return 1
-    print("PASS: public vault meets the enterprise nginx/database contract baseline")
+    print("PASS: public vault meets the enterprise Apache/database contract baseline")
     return 0
 
 
