@@ -4,6 +4,8 @@
 #   a2enmod http2
 #
 # Replace vault.example.com and certificate paths for the target environment.
+# If you want a reduced Server header, configure ServerTokens globally;
+# Apache does not permit ServerTokens inside a VirtualHost.
 
 <VirtualHost *:80>
     ServerName vault.example.com
@@ -20,7 +22,6 @@
     SSLCertificateKeyFile /etc/letsencrypt/live/vault.example.com/privkey.pem
     SSLProtocol -all +TLSv1.2 +TLSv1.3
 
-    ServerTokens Prod
     ServerSignature Off
 
     ProxyRequests Off
