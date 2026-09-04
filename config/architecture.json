@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "canonical_data_backend": "supabase",
   "supabase_required": true,
   "github_data_canonical": false,
@@ -12,7 +12,7 @@
   "semantic_store_errors_required": true,
   "pinned_workflow_actions_required": true,
   "code_scanning_workflow_required": true,
-  "dependency_audit_workflow_required": true,
+  "dependency_vulnerability_scan_required": true,
   "forbidden_top_level_paths": [
     "00_Inbox",
     "10_Daily",
@@ -36,7 +36,7 @@
     ".github/pull_request_template.md",
     ".github/workflows/architecture.yml",
     ".github/workflows/codeql.yml",
-    ".github/workflows/dependency-audit.yml",
+    ".github/workflows/dependency-vulnerability-scan.yml",
     "core/machine/main/repository.json",
     "core/machine/indexes/responsibilities.json",
     "documents/public.ts",
