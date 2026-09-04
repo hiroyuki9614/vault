@@ -27,11 +27,12 @@ The current baseline requires:
 - exact direct development dependency versions
 - committed npm lockfile and `npm ci` in CI
 - production TypeScript emit plus built-entrypoint startup/shutdown smoke
-- loopback-only Node bind by default for Nginx deployments
+- loopback-only Node bind by default for Apache deployments
 - bounded request body, header, request, upstream and shutdown timeouts
 - bearer-scoped Supabase RPC transport using the caller identity
 - no Supabase service-role credential in the normal HTTP runtime contract
-- Nginx reverse-proxy reference configuration
+- Apache reverse-proxy reference configuration
+- Apache configuration syntax validation plus live Apache-to-Node CI smoke
 - hardened systemd reference unit
 - bounded CI execution time
 - GitHub Actions pinned to immutable commits
@@ -144,7 +145,7 @@ The acceptance suite uses only synthetic UUIDs/content and verifies:
 
 This is repository-level PostgreSQL evidence. It is not a substitute for acceptance against a real target Supabase project and its Auth/platform configuration.
 
-## Nginx production topology
+## Apache production topology
 
 The reference HTTP production shape is:
 
@@ -152,9 +153,9 @@ The reference HTTP production shape is:
 Client
   |
   v
-Nginx :443
+Apache HTTP Server :443
   TLS termination
-  request size / timeout / proxy header boundary
+  request size / proxy timeout / header boundary
   |
   v
 127.0.0.1:3100
@@ -171,19 +172,23 @@ Supabase REST/RPC
 Supabase Auth + RLS + PostgreSQL
 ```
 
-Nginx is the public listener. The Node runtime defaults to `127.0.0.1` and requires an explicit override before it can bind a non-loopback address.
+Apache is the public listener. The Node runtime defaults to `127.0.0.1` and requires an explicit override before it can bind a non-loopback address.
 
 The normal HTTP runtime does not use a service-role credential. `/v1/*` requests require the caller's Supabase Bearer access token; that identity reaches the existing RLS boundary.
 
 The source-controlled reference also provides:
 
-- an Nginx configuration with TLS termination placeholders, fixed-host HTTP redirect, explicit Authorization forwarding, upstream keepalive, request size and proxy timeout bounds;
+- an Apache vhost with TLS termination placeholders, fixed-host HTTP redirect, `ProxyRequests Off`, explicit Authorization preservation, request body/header limits and proxy timeouts;
+- an intentionally empty fallback document root so unrelated paths do not serve application/repository files;
 - a systemd unit using a dedicated `vault` account, `NoNewPrivileges`, filesystem/kernel protection and an empty capability bounding set;
 - graceful SIGTERM/SIGINT shutdown;
 - liveness/readiness endpoints;
-- a production build/start smoke in CI.
+- a production build/start smoke in CI;
+- `apachectl configtest` plus a live HTTPS reverse-proxy smoke in CI.
 
-See `docs/NGINX_DEPLOYMENT.md` for deployment details.
+The live Apache CI smoke proves that anonymous `/v1/*` remains 401 and that an authenticated synthetic request reaches the Node router rather than having its Authorization header stripped at the Apache boundary.
+
+See `docs/APACHE_DEPLOYMENT.md` for deployment details.
 
 ## Repository security automation
 
@@ -191,6 +196,7 @@ Source-controlled checks include:
 
 - read-only architecture verification workflow
 - production build/start/shutdown smoke
+- Apache configuration validation and live reverse-proxy smoke
 - executable database contract workflow
 - CodeQL `security-extended` analysis for JavaScript/TypeScript and Python
 - OSV-Scanner lockfile vulnerability scan
@@ -227,8 +233,9 @@ Do not share service-role credentials between environments. Normal application r
 - TLS certificate issuance and renewal
 - firewall policy that keeps Node port `3100` non-public
 - OS security updates
-- Nginx package lifecycle and configuration ownership
+- Apache package/module lifecycle and configuration ownership
 - dedicated service account creation and permissions
+- global Apache directives, such as organization-approved `ServerTokens`, owned at server configuration scope rather than copied into the vhost
 
 ### Data protection
 
@@ -241,7 +248,7 @@ Do not share service-role credentials between environments. Normal application r
 ### Operations
 
 - monitoring and alerting
-- Nginx / application / database error logging with secret redaction
+- Apache / application / database error logging with secret redaction
 - centralized log retention/aggregation when required
 - incident ownership and escalation path
 - maintenance windows / change policy when required
@@ -272,26 +279,30 @@ At minimum, verify with synthetic test users in the target environment:
 2. built `dist/server/main.js` starts and handles SIGTERM cleanly.
 3. Node binds `127.0.0.1:3100`, not a public interface.
 4. host firewall does not expose port `3100` externally.
-5. `nginx -t` succeeds before reload.
-6. HTTPS liveness/readiness through Nginx succeeds.
-7. anonymous `/v1/*` requests return 401.
-8. owner can read/write/delete documents.
-9. editor can read/write documents but cannot perform owner-only membership operations.
-10. viewer can read but cannot write, including exact-replay-shaped write attempts.
-11. authenticated non-members cannot read or write another vault.
-12. stale `expectedVersion` fails without mutation.
-13. successful create/update returns and read-backs the same document ID.
-14. replaying the exact same create does not create a second document.
-15. reusing a create ID with different state fails closed.
-16. path collision across identities fails closed.
-17. replaying an already committed exact update returns the committed version rather than mutating twice.
-18. delete is followed by same-ID absence.
-19. Supabase outage returns a bounded 503 and does not create a GitHub or local second canonical.
-20. Nginx/Node logs contain request IDs but not Authorization values, access tokens, Supabase keys, or request bodies.
-21. backup restore is demonstrated in the target organization's environment.
-22. repository ruleset / branch protection matches the organization's approved governance policy.
-23. OSV dependency vulnerability scan is green for the exact committed lockfile being released.
-24. repository `database-contract` is green for the exact migration set being released.
+5. `apachectl configtest` returns `Syntax OK` before reload.
+6. Apache has `ProxyRequests Off` and only the intended reverse-proxy mappings.
+7. HTTPS liveness/readiness through Apache succeeds.
+8. anonymous `/v1/*` requests return 401.
+9. a synthetic Bearer request reaches the Node HTTP router through Apache.
+10. non-JSON authenticated POST returns 415.
+11. owner can read/write/delete documents.
+12. editor can read/write documents but cannot perform owner-only membership operations.
+13. viewer can read but cannot write, including exact-replay-shaped write attempts.
+14. authenticated non-members cannot read or write another vault.
+15. stale `expectedVersion` fails without mutation.
+16. successful create/update returns and read-backs the same document ID.
+17. replaying the exact same create does not create a second document.
+18. reusing a create ID with different state fails closed.
+19. path collision across identities fails closed.
+20. replaying an already committed exact update returns the committed version rather than mutating twice.
+21. delete is followed by same-ID absence.
+22. Supabase outage returns a bounded 503 and does not create a GitHub or local second canonical.
+23. Apache/Node logs contain request correlation data but not Authorization values, access tokens, Supabase keys, captured Authorization environment values, or request bodies.
+24. the Apache fallback document root is empty and does not contain repository/application files.
+25. backup restore is demonstrated in the target organization's environment.
+26. repository ruleset / branch protection matches the organization's approved governance policy.
+27. OSV dependency vulnerability scan is green for the exact committed lockfile being released.
+28. repository `database-contract` is green for the exact migration set being released.
 
 ## Non-claims
 
