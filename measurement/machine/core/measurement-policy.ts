@@ -43,7 +43,7 @@ function optionalText(value: string | undefined, field: string, maxLength: numbe
   return normalized;
 }
 
-function timestampMs(value: string, field: string): number {
+function normalizeTimestamp(value: string, field: string): { readonly value: string; readonly milliseconds: number } {
   if (!RFC3339_RE.test(value)) {
     throw new MeasurementValidationError('invalid_timestamp', field, `${field} must be RFC3339`);
   }
@@ -51,7 +51,7 @@ function timestampMs(value: string, field: string): number {
   if (!Number.isFinite(milliseconds)) {
     throw new MeasurementValidationError('invalid_timestamp', field, `${field} must be a valid timestamp`);
   }
-  return milliseconds;
+  return { value: new Date(milliseconds).toISOString(), milliseconds };
 }
 
 function optionalMetric(value: number | undefined, field: string): number | undefined {
@@ -103,9 +103,9 @@ export function planMeasurementRun(command: RecordMeasurementRunCommand): Measur
     );
   }
 
-  const startedMs = timestampMs(command.startedAt, 'startedAt');
-  const finishedMs = timestampMs(command.finishedAt, 'finishedAt');
-  const durationMs = finishedMs - startedMs;
+  const startedAt = normalizeTimestamp(command.startedAt, 'startedAt');
+  const finishedAt = normalizeTimestamp(command.finishedAt, 'finishedAt');
+  const durationMs = finishedAt.milliseconds - startedAt.milliseconds;
   if (!Number.isSafeInteger(durationMs) || durationMs < 0) {
     throw new MeasurementValidationError(
       'invalid_duration',
@@ -135,8 +135,8 @@ export function planMeasurementRun(command: RecordMeasurementRunCommand): Measur
     ...(promptRef === undefined ? {} : { promptRef }),
     skillIds: normalizeSkillIds(command.skillIds),
     status: assertStatus(command.status),
-    startedAt: command.startedAt,
-    finishedAt: command.finishedAt,
+    startedAt: startedAt.value,
+    finishedAt: finishedAt.value,
     durationMs,
     ...(inputTokens === undefined ? {} : { inputTokens }),
     ...(outputTokens === undefined ? {} : { outputTokens }),
