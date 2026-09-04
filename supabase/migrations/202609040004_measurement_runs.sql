@@ -24,6 +24,9 @@ create table public.measurement_runs (
   recorded_by uuid not null references auth.users(id),
   created_at timestamptz not null default now(),
   check (finished_at >= started_at),
+  check (
+    duration_ms = floor(extract(epoch from (finished_at - started_at)) * 1000)::bigint
+  ),
   check (parent_run_id is null or parent_run_id <> id)
 );
 
@@ -115,6 +118,7 @@ begin
      or p_finished_at < p_started_at
      or p_duration_ms is null
      or p_duration_ms < 0
+     or p_duration_ms <> floor(extract(epoch from (p_finished_at - p_started_at)) * 1000)::bigint
      or p_parent_run_id = p_run_id
      or coalesce(cardinality(p_skill_ids), 0) > 32
      or exists (
