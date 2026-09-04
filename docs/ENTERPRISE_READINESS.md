@@ -27,7 +27,8 @@ The current baseline requires:
 - bounded CI execution time
 - GitHub Actions pinned to immutable commits
 - CodeQL for JavaScript/TypeScript and Python
-- locked dependency audit with `npm audit --audit-level=high`
+- OSV-Scanner scan of the committed `package-lock.json`
+- dependency vulnerability gate that fails on any known vulnerability reported by OSV
 - Dependabot for npm and GitHub Actions
 - CODEOWNERS for security-critical paths
 - architecture regression checks
@@ -97,12 +98,13 @@ Source-controlled checks include:
 
 - read-only architecture verification workflow
 - CodeQL `security-extended` analysis for JavaScript/TypeScript and Python
-- locked dependency audit rejecting High/Critical npm advisories
+- OSV-Scanner lockfile vulnerability scan
+- failure on any known vulnerability reported for the committed npm lockfile
 - immutable commit SHA pinning for third-party GitHub Actions
 - Dependabot updates
 - CODEOWNERS declarations
 
-GitHub Dependency Review is an additional graph-backed control that requires Dependency Graph to be enabled in repository administration. Production organizations should enable and require it when available. See `docs/REPOSITORY_GOVERNANCE.md`.
+The dependency gate does not rely on the npm Advisory API. GitHub Dependency Review is an additional graph-backed control that requires Dependency Graph to be enabled in repository administration. Production organizations should enable and require it when available. See `docs/REPOSITORY_GOVERNANCE.md`.
 
 ## Recommended production topology
 
@@ -162,7 +164,7 @@ Do not share service-role credentials between environments.
 ### Delivery
 
 - protected `main` branch or active ruleset
-- required passing architecture / CodeQL / dependency-audit checks
+- required passing `architecture`, CodeQL, and `dependency-vulnerability-scan` checks
 - GitHub Dependency Review required once Dependency Graph is enabled
 - pull-request review policy appropriate to the organization
 - controlled production deployment authority
@@ -195,6 +197,7 @@ At minimum, verify with synthetic test users:
 13. runtime logs do not contain secrets.
 14. backup restore is demonstrated in the target organization's environment.
 15. repository ruleset / branch protection matches the organization's approved governance policy.
+16. OSV dependency vulnerability scan is green for the exact committed lockfile being released.
 
 ## Non-claims
 
