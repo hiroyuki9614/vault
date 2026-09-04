@@ -1,0 +1,18 @@
+{
+  "name": "public-vault-reference-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:ts": "vitest run",
+    "check:ts": "npm run typecheck && npm run test:ts",
+    "check:architecture": "python -m unittest tests/test_architecture_check.py && python tooling/architecture_check.py",
+    "check": "npm run check:ts && npm run check:architecture"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  }
+}
