@@ -44,6 +44,14 @@ public.documents  <- canonical data
 
 AI開発で再利用できるSkillです。入口は [`.agents/SKILLS_INDEX.md`](.agents/SKILLS_INDEX.md) です。
 
+### Project lifecycle
+
+- [`project-initialization`](.agents/skills/project-initialization/SKILL.md) — greenfield / major foundationの最小boundaryとreadinessを決める
+- [`requirements-interview`](.agents/skills/requirements-interview/SKILL.md) — material unknownだけを必要最小限の質問で解消する
+- [`change-impact-analysis`](.agents/skills/change-impact-analysis/SKILL.md) — 実ファイルから処理経路を追い変更対象と確認対象を分ける
+- [`technical-design-document`](.agents/skills/technical-design-document/SKILL.md) — durable decisionのartifact ownerを選び重複canonicalを防ぐ
+- [`deployment-diagnosis`](.agents/skills/deployment-diagnosis/SKILL.md) — deploy障害のlast success / first failure boundaryを特定する
+
 ### Development flow
 
 - [`requirements-guard`](.agents/skills/requirements-guard/SKILL.md) — current requirement / canonical / implementation / testsの整合
