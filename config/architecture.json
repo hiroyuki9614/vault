@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "canonical_data_backend": "supabase",
   "supabase_required": true,
   "github_data_canonical": false,
-  "runtime_capability_files": 0,
+  "runtime_language": "typescript",
+  "runtime_architecture": "functional_core_effectful_adapter",
   "forbidden_top_level_paths": [
     "00_Inbox",
     "10_Daily",
@@ -18,6 +19,15 @@
     "README.md",
     "AGENTS.md",
     "vault.config.yml",
+    "package.json",
+    "tsconfig.json",
+    "core/machine/main/repository.json",
+    "core/machine/indexes/responsibilities.json",
+    "documents/machine/contracts/document.ts",
+    "documents/machine/core/document-policy.ts",
+    "documents/machine/ports/document-store.ts",
+    "documents/machine/adapters/supabase-rpc-document-store.ts",
+    "documents/machine/runtime/document-service.ts",
     "docs/ARCHITECTURE.md",
     "supabase/README.md",
     "supabase/migrations/202608310001_supabase_first_vault.sql"
@@ -26,5 +36,12 @@
     "get_document",
     "put_document",
     "delete_document"
+  ],
+  "core_forbidden_fragments": [
+    "supabase",
+    "process.env",
+    "node:fs",
+    "node:child_process",
+    "fetch("
   ]
 }
