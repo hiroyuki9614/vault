@@ -30,7 +30,7 @@ function createMemoryStore(): DocumentStore {
 
     async put(request: PutDocumentRequest) {
       current = {
-        id: request.documentId ?? DOCUMENT_ID,
+        id: request.documentId,
         vaultId: request.vaultId,
         path: request.path,
         title: request.title,
@@ -49,11 +49,12 @@ function createMemoryStore(): DocumentStore {
 }
 
 describe('document service', () => {
-  it('returns canonical same-id read-back after put', async () => {
+  it('returns canonical caller-owned identity after create', async () => {
     const service = createDocumentService(createMemoryStore());
 
     const result = await service.put({
       kind: 'create',
+      id: DOCUMENT_ID,
       vaultId: VAULT_ID,
       path: 'notes/a.md',
       title: 'A',
@@ -69,6 +70,7 @@ describe('document service', () => {
     const service = createDocumentService(createMemoryStore());
     await service.put({
       kind: 'create',
+      id: DOCUMENT_ID,
       vaultId: VAULT_ID,
       path: 'notes/a.md',
     });
@@ -97,6 +99,7 @@ describe('document service', () => {
     const service = createDocumentService(badStore);
     const failure = service.put({
       kind: 'create',
+      id: DOCUMENT_ID,
       vaultId: VAULT_ID,
       path: 'notes/a.md',
     });
@@ -117,6 +120,7 @@ describe('document service', () => {
     const service = createDocumentService(badStore);
     const failure = service.put({
       kind: 'create',
+      id: DOCUMENT_ID,
       vaultId: VAULT_ID,
       path: 'notes/a.md',
     });

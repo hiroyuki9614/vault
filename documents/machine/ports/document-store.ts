@@ -7,6 +7,8 @@ import type {
 export type DocumentStoreErrorCode =
   | 'not_found'
   | 'version_conflict'
+  | 'idempotency_conflict'
+  | 'path_conflict'
   | 'permission_denied'
   | 'unauthenticated'
   | 'invalid_request'

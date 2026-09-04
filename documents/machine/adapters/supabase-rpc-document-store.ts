@@ -125,10 +125,15 @@ function semanticRpcError(error: RpcErrorLike): DocumentStoreError {
 
   if (message.includes('version_conflict')) {
     code = 'version_conflict';
+  } else if (message.includes('idempotency_conflict')) {
+    code = 'idempotency_conflict';
+  } else if (message.includes('path_conflict')) {
+    code = 'path_conflict';
   } else if (message.includes('document_not_found')) {
     code = 'not_found';
   } else if (
     message.includes('invalid_path') ||
+    message.includes('document_id_required') ||
     message.includes('expected_version_required') ||
     message.includes('expected_version_must_be_null_on_create')
   ) {

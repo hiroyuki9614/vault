@@ -18,12 +18,19 @@ The current baseline requires:
 - Supabase Auth + RLS for mutable data authorization
 - optimistic concurrency for document writes
 - same-document-ID read-back after mutation
+- caller-generated document identity for create
+- idempotent exact replay for create and update puts
 - semantic store error codes instead of provider error objects
 - versioned SQL migrations
 - exact direct development dependency versions
 - committed npm lockfile and `npm ci` in CI
 - bounded CI execution time
-- dependency update automation for npm and GitHub Actions
+- GitHub Actions pinned to immutable commits
+- CodeQL for JavaScript/TypeScript and Python
+- OSV-Scanner scan of the committed `package-lock.json`
+- dependency vulnerability gate that fails on any known vulnerability reported by OSV
+- Dependabot for npm and GitHub Actions
+- CODEOWNERS for security-critical paths
 - architecture regression checks
 - security reporting policy
 
@@ -42,9 +49,21 @@ command
   -> completed
 ```
 
-Create must return version `1`. Update must return `expectedVersion + 1`.
+Create requires a caller-generated UUID and must return version `1`. Update must return `expectedVersion + 1`.
 
 A mismatched mutation result or read-back fails closed.
+
+### Ambiguous transport outcomes
+
+The runtime may receive an infrastructure failure after PostgreSQL has already committed a write. To avoid duplicate or accidental second writes:
+
+- exact create replay uses the same caller-generated document UUID and returns the already committed version-1 row;
+- exact update replay with the same identity, `expectedVersion`, and desired state returns the already committed `expectedVersion + 1` row;
+- same create identity with different state fails as `idempotency_conflict`;
+- a path already owned by another identity fails as `path_conflict`;
+- delete transport ambiguity is reconciled by same-ID read before deciding whether another delete attempt is needed.
+
+The pure core does not implement sleep/retry loops. Retry/reconciliation cadence remains caller-owned.
 
 Delete completion requires:
 
@@ -62,6 +81,8 @@ Provider-specific errors are mapped at the adapter boundary to semantic `Documen
 
 - `not_found`
 - `version_conflict`
+- `idempotency_conflict`
+- `path_conflict`
 - `permission_denied`
 - `unauthenticated`
 - `invalid_request`
@@ -69,7 +90,21 @@ Provider-specific errors are mapped at the adapter boundary to semantic `Documen
 - `invalid_response`
 - `unknown`
 
-Only `unavailable` is retryable by default. Retry policy remains caller-owned; the core does not sleep, retry, or inspect provider-specific errors.
+`unavailable` identifies a transport/infrastructure condition that may be retried after applying the operation's reconciliation rules. Provider error text is not the application contract.
+
+## Repository security automation
+
+Source-controlled checks include:
+
+- read-only architecture verification workflow
+- CodeQL `security-extended` analysis for JavaScript/TypeScript and Python
+- OSV-Scanner lockfile vulnerability scan
+- failure on any known vulnerability reported for the committed npm lockfile
+- immutable commit SHA pinning for third-party GitHub Actions
+- Dependabot updates
+- CODEOWNERS declarations
+
+The dependency gate does not rely on the npm Advisory API. GitHub Dependency Review is an additional graph-backed control that requires Dependency Graph to be enabled in repository administration. Production organizations should enable and require it when available. See `docs/REPOSITORY_GOVERNANCE.md`.
 
 ## Recommended production topology
 
@@ -102,8 +137,6 @@ Do not share service-role credentials between environments.
 
 ## Organization controls required before production
 
-A production organization should explicitly provide and verify:
-
 ### Identity and access
 
 - organization SSO / MFA policy where applicable
@@ -130,8 +163,9 @@ A production organization should explicitly provide and verify:
 
 ### Delivery
 
-- protected `main` branch
-- required passing CI checks
+- protected `main` branch or active ruleset
+- required passing `architecture`, CodeQL, and `dependency-vulnerability-scan` checks
+- GitHub Dependency Review required once Dependency Graph is enabled
 - pull-request review policy appropriate to the organization
 - controlled production deployment authority
 - migration rollout / rollback procedure
@@ -140,7 +174,7 @@ A production organization should explicitly provide and verify:
 
 - dependency update review
 - vulnerability triage
-- secret scanning / repository security features appropriate to the GitHub plan
+- secret scanning / push protection where available
 - periodic RLS / authorization verification
 - penetration testing when risk or policy requires it
 
@@ -154,10 +188,16 @@ At minimum, verify with synthetic test users:
 4. unauthenticated access is rejected.
 5. stale `expectedVersion` fails without mutation.
 6. successful create/update returns and read-backs the same document ID.
-7. delete is followed by same-ID absence.
-8. Supabase outage does not create a GitHub or local second canonical.
-9. runtime logs do not contain secrets.
-10. backup restore is demonstrated in the target organization's environment.
+7. replaying the exact same create does not create a second document.
+8. reusing a create ID with different state fails closed.
+9. path collision across identities fails closed.
+10. replaying an already committed exact update returns the committed version rather than mutating twice.
+11. delete is followed by same-ID absence.
+12. Supabase outage does not create a GitHub or local second canonical.
+13. runtime logs do not contain secrets.
+14. backup restore is demonstrated in the target organization's environment.
+15. repository ruleset / branch protection matches the organization's approved governance policy.
+16. OSV dependency vulnerability scan is green for the exact committed lockfile being released.
 
 ## Non-claims
 

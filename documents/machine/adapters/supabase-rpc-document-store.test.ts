@@ -35,6 +35,17 @@ function row(overrides: Readonly<Record<string, unknown>> = {}): Record<string, 
   };
 }
 
+function failingClient(message: string, code = 'P0001'): SupabaseRpcClient {
+  return {
+    async rpc<T>() {
+      return {
+        data: null as T | null,
+        error: { message, code },
+      };
+    },
+  };
+}
+
 describe('Supabase RPC document adapter', () => {
   it('maps path reads into provider-free snapshots', async () => {
     const client = clientWith((name) => {
@@ -71,12 +82,12 @@ describe('Supabase RPC document adapter', () => {
     });
   });
 
-  it('maps semantic requests to existing RPC parameter names', async () => {
+  it('sends caller identity on idempotent create', async () => {
     const client = clientWith((name, args) => {
       expect(name).toBe('put_document');
       expect(args).toMatchObject({
         p_vault_id: VAULT_ID,
-        p_document_id: null,
+        p_document_id: DOCUMENT_ID,
         p_path: 'notes/a.md',
         p_expected_version: null,
       });
@@ -86,7 +97,7 @@ describe('Supabase RPC document adapter', () => {
     const store = createSupabaseRpcDocumentStore(client);
     const result = await store.put({
       vaultId: VAULT_ID,
-      documentId: null,
+      documentId: DOCUMENT_ID,
       path: 'notes/a.md',
       title: '',
       content: '',
@@ -94,20 +105,29 @@ describe('Supabase RPC document adapter', () => {
       expectedVersion: null,
     });
 
-    expect(result.version).toBe(1);
+    expect(result).toMatchObject({ id: DOCUMENT_ID, version: 1 });
+  });
+
+  it('normalizes deterministic write conflicts', async () => {
+    const idempotency = createSupabaseRpcDocumentStore(
+      failingClient('idempotency_conflict: internal database detail'),
+    );
+    await expect(idempotency.getById(VAULT_ID, DOCUMENT_ID)).rejects.toMatchObject({
+      code: 'idempotency_conflict',
+      retryable: false,
+    });
+
+    const path = createSupabaseRpcDocumentStore(failingClient('path_conflict'));
+    await expect(path.getById(VAULT_ID, DOCUMENT_ID)).rejects.toMatchObject({
+      code: 'path_conflict',
+      retryable: false,
+    });
   });
 
   it('normalizes version conflicts without exposing provider messages as the contract', async () => {
-    const client: SupabaseRpcClient = {
-      async rpc<T>() {
-        return {
-          data: null as T | null,
-          error: { message: 'version_conflict: internal database detail', code: 'P0001' },
-        };
-      },
-    };
-
-    const store = createSupabaseRpcDocumentStore(client);
+    const store = createSupabaseRpcDocumentStore(
+      failingClient('version_conflict: internal database detail'),
+    );
     const failure = store.getByPath(VAULT_ID, 'notes/a.md');
 
     await expect(failure).rejects.toMatchObject({
@@ -120,16 +140,7 @@ describe('Supabase RPC document adapter', () => {
   });
 
   it('marks infrastructure availability errors as retryable', async () => {
-    const client: SupabaseRpcClient = {
-      async rpc<T>() {
-        return {
-          data: null as T | null,
-          error: { message: 'connection failure', code: '08006' },
-        };
-      },
-    };
-
-    const store = createSupabaseRpcDocumentStore(client);
+    const store = createSupabaseRpcDocumentStore(failingClient('connection failure', '08006'));
     const failure = store.getById(VAULT_ID, DOCUMENT_ID);
 
     await expect(failure).rejects.toBeInstanceOf(DocumentStoreError);

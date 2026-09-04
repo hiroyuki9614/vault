@@ -149,6 +149,7 @@ export function planGetDocumentById(vaultId: string, documentId: string): Docume
 
 export function planPutDocument(command: PutDocumentCommand): DocumentWritePlan {
   const vaultId = assertUuid(command.vaultId, 'vaultId');
+  const documentId = assertUuid(command.id, 'id');
   const path = assertPath(command.path);
   const title = command.title ?? '';
   const content = command.content ?? '';
@@ -159,7 +160,7 @@ export function planPutDocument(command: PutDocumentCommand): DocumentWritePlan 
       kind: 'put',
       request: {
         vaultId,
-        documentId: null,
+        documentId,
         path,
         title,
         content,
@@ -173,7 +174,7 @@ export function planPutDocument(command: PutDocumentCommand): DocumentWritePlan 
     kind: 'put',
     request: {
       vaultId,
-      documentId: assertUuid(command.id, 'id'),
+      documentId,
       path,
       title,
       content,
@@ -200,13 +201,16 @@ export function verifyPutMutation(
   mutation: DocumentSnapshot,
 ): boolean {
   const request = plan.request;
-  const identityMatches = request.documentId === null || mutation.id === request.documentId;
   const versionMatches =
     request.expectedVersion === null
       ? mutation.version === 1
       : mutation.version === request.expectedVersion + 1;
 
-  return identityMatches && snapshotContentMatchesRequest(request, mutation) && versionMatches;
+  return (
+    mutation.id === request.documentId &&
+    snapshotContentMatchesRequest(request, mutation) &&
+    versionMatches
+  );
 }
 
 export function verifyPutReadBack(

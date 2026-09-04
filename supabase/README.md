@@ -54,9 +54,13 @@ Identity reads are used for mutation completion/read-back because document `id` 
 
 ### Create
 
-`public.put_document(vault_id, null, path, title, content, metadata, null)`
+The caller generates a stable document UUID before the first write:
+
+`public.put_document(vault_id, document_id, path, title, content, metadata, null)`
 
 A successful create returns version `1`.
+
+Retrying the exact same create with the same `document_id` returns the already committed version-1 row. Conflicting re-use of the same ID fails with `idempotency_conflict`. Attempting the same path with a different identity fails with `path_conflict`.
 
 ### Update
 
@@ -64,13 +68,13 @@ Use the `id` and `version` from the current snapshot:
 
 `public.put_document(vault_id, id, path, title, content, metadata, version)`
 
-A stale version fails with `version_conflict` and does not mutate the document.
+A stale version fails with `version_conflict` and does not mutate the document. If the first update committed but its response was lost, replaying the exact same requested state with the same `expectedVersion` returns the already committed `expectedVersion + 1` row. A different state remains a conflict.
 
 ### Delete
 
 `public.delete_document(vault_id, id, version)`
 
-Delete also rejects a stale version.
+Delete rejects a stale version. After an ambiguous transport failure, callers should reconcile with `get_document_by_id` before deciding whether another delete attempt is needed.
 
 ## Same-identity read-back
 
