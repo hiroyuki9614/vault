@@ -19,6 +19,7 @@
   "include": [
     "core/**/*.ts",
     "documents/**/*.ts",
+    "measurement/**/*.ts",
     "server/**/*.ts"
   ]
 }

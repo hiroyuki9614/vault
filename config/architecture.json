@@ -1,5 +1,5 @@
 {
-  "schema_version": 10,
+  "schema_version": 11,
   "canonical_data_backend": "supabase",
   "supabase_required": true,
   "github_data_canonical": false,
@@ -55,6 +55,12 @@
     "documents/machine/ports/document-store.ts",
     "documents/machine/adapters/supabase-rpc-document-store.ts",
     "documents/machine/runtime/document-service.ts",
+    "measurement/public.ts",
+    "measurement/machine/contracts/measurement.ts",
+    "measurement/machine/core/measurement-policy.ts",
+    "measurement/machine/ports/measurement-store.ts",
+    "measurement/machine/adapters/supabase-rpc-measurement-store.ts",
+    "measurement/machine/runtime/measurement-service.ts",
     "server/config.ts",
     "server/http-app.ts",
     "server/main.ts",
@@ -63,6 +69,7 @@
     "deploy/systemd/vault.service.example",
     "docs/ARCHITECTURE.md",
     "docs/ENTERPRISE_READINESS.md",
+    "docs/MEASUREMENT.md",
     "docs/APACHE_DEPLOYMENT.md",
     "docs/REPOSITORY_GOVERNANCE.md",
     "docs/SECURITY_AUTOMATION.md",
@@ -71,8 +78,10 @@
     "supabase/migrations/202609040001_document_identity_read.sql",
     "supabase/migrations/202609040002_idempotent_document_create.sql",
     "supabase/migrations/202609040003_document_write_authorization.sql",
+    "supabase/migrations/202609040004_measurement_runs.sql",
     "tests/postgres/supabase-auth-bootstrap.sql",
-    "tests/postgres/document-rls-acceptance.sql"
+    "tests/postgres/document-rls-acceptance.sql",
+    "tests/postgres/measurement-rls-acceptance.sql"
   ],
   "required_rpc_names": [
     "get_document",
@@ -84,7 +93,9 @@
     "document_id_required",
     "idempotency_conflict",
     "path_conflict",
-    "permission_denied"
+    "permission_denied",
+    "record_measurement_run",
+    "measurement_conflict"
   ],
   "core_forbidden_fragments": [
     "supabase",

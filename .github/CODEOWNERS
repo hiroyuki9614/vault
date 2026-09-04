@@ -10,6 +10,11 @@
 /documents/machine/core/ @hiroyuki9614
 /documents/machine/ports/ @hiroyuki9614
 /documents/machine/adapters/ @hiroyuki9614
+/measurement/public.ts @hiroyuki9614
+/measurement/machine/contracts/ @hiroyuki9614
+/measurement/machine/core/ @hiroyuki9614
+/measurement/machine/ports/ @hiroyuki9614
+/measurement/machine/adapters/ @hiroyuki9614
 /server/ @hiroyuki9614
 /deploy/ @hiroyuki9614
 /core/machine/ @hiroyuki9614

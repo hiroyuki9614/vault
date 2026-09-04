@@ -13,7 +13,8 @@ Read only what the task needs:
 3. task-owner public contract, normally `<capability>/public.ts`
 4. `docs/ARCHITECTURE.md` when architecture/data boundary is material
 5. `docs/ENTERPRISE_READINESS.md` when production/enterprise readiness is material
-6. `.agents/SKILLS_INDEX.md` only when a listed Skill is materially useful
+6. `docs/MEASUREMENT.md` when observability/Agent/Skill measurement is material
+7. `.agents/SKILLS_INDEX.md` only when a listed Skill is materially useful
 
 Do not preload all Skills or repository history.
 
@@ -67,24 +68,30 @@ delete effect
 
 Do not downgrade same-ID verification to path-only verification.
 
+## Measurement boundary
+
+Measurement is optional observability and must not become a hard prerequisite for Documents, Skills, or subject work.
+
+```text
+subject operation
+  +-> subject result
+  +-> optional measurement result
+```
+
+Rules:
+
+- record terminal Agent/Skill/task snapshots through `measurement/public.ts`.
+- caller supplies timestamps; core derives duration and does not read a clock.
+- exact same-run replay may be idempotent; divergent same-ID replay fails as `measurement_conflict`.
+- raw prompt text, user/model input-output bodies, employee identity and company-specific KPI schema do not belong in the public Measurement contract.
+- `parentRunId` may describe lineage; Measurement does not launch or orchestrate subagents.
+- measurement failure returns `not_recorded`; do not automatically convert it into subject failure.
+
 ## Error boundary
 
 Supabase/provider errors are Adapter concerns.
 
-Normal caller-visible store failures use semantic `DocumentStoreError` codes:
-
-```text
-not_found
-version_conflict
-permission_denied
-unauthenticated
-invalid_request
-unavailable
-invalid_response
-unknown
-```
-
-Do not expose raw provider error objects/messages as the capability contract.
+Normal caller-visible store failures use semantic errors. Do not expose raw provider error objects/messages as the capability contract.
 
 Retry policy belongs to the caller/composition layer. Do not put sleep/backoff/network retry in the pure core.
 
@@ -106,7 +113,7 @@ Supabase outage must not cause a GitHub/local write fallback or second canonical
 - Service-role key is excluded from normal client/Agent contracts.
 - Applied migrations are immutable; schema changes use a new migration.
 - Optimistic concurrency is required for document update/delete.
-- Same-document-ID read-back is required after mutation.
+- Same-document-ID read-back is required after document mutation.
 
 ## Build and dependency boundary
 

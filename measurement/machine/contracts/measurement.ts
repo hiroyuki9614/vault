@@ -3,6 +3,8 @@ export type MeasurementRunStatus = 'completed' | 'failed' | 'blocked' | 'cancell
 
 export type MeasurementValidationErrorCode =
   | 'invalid_uuid'
+  | 'invalid_kind'
+  | 'invalid_status'
   | 'invalid_name'
   | 'invalid_reference'
   | 'invalid_timestamp'
@@ -30,6 +32,7 @@ export interface RecordMeasurementRunCommand {
   readonly taskType?: string;
   readonly provider?: string;
   readonly model?: string;
+  /** Stable prompt/version reference only. Raw prompt content is intentionally excluded. */
   readonly promptRef?: string;
   readonly skillIds?: readonly string[];
   readonly status: MeasurementRunStatus;
@@ -37,6 +40,7 @@ export interface RecordMeasurementRunCommand {
   readonly finishedAt: string;
   readonly inputTokens?: number;
   readonly outputTokens?: number;
+  /** Integer micro-USD avoids floating-point currency ambiguity. */
   readonly costMicrousd?: number;
   readonly correctionCount?: number;
   readonly humanIntervention?: boolean;

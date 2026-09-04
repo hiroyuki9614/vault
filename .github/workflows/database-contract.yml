@@ -41,3 +41,6 @@ jobs:
 
       - name: Verify document RPC and RLS acceptance contract
         run: sudo -u postgres psql -d vault_ci -v ON_ERROR_STOP=1 -f tests/postgres/document-rls-acceptance.sql
+
+      - name: Verify measurement RPC and RLS acceptance contract
+        run: sudo -u postgres psql -d vault_ci -v ON_ERROR_STOP=1 -f tests/postgres/measurement-rls-acceptance.sql

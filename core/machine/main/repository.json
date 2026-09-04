@@ -45,6 +45,14 @@
     "schema_canonical": "versioned_git_migrations",
     "semantic_rpc_boundary": true
   },
+  "measurement": {
+    "status": "optional_capability",
+    "subject_success_depends_on_measurement": false,
+    "terminal_run_snapshot": true,
+    "parent_run_lineage_supported": true,
+    "raw_prompt_input_output_content_allowed": false,
+    "company_specific_kpis_owned_here": false
+  },
   "secrets": {
     "repository_storage_allowed": false,
     "runtime_injection_required": true
