@@ -196,10 +196,14 @@ class ArchitectureCheckTest(unittest.TestCase):
         repo = self.copy_repo()
         server_config = repo / "server" / "config.ts"
         server_config.write_text(
-            server_config.read_text(encoding="utf-8").replace("'127.0.0.1'", "'0.0.0.0'", 1),
+            server_config.read_text(encoding="utf-8").replace(
+                "env.VAULT_HOST?.trim() || '127.0.0.1'",
+                "env.VAULT_HOST?.trim() || '0.0.0.0'",
+                1,
+            ),
             encoding="utf-8",
         )
-        self.assertTrue(any("127.0.0.1" in error for error in check(repo)))
+        self.assertTrue(any("default VAULT_HOST to 127.0.0.1" in error for error in check(repo)))
 
     def test_systemd_hardening_is_required(self):
         repo = self.copy_repo()
