@@ -10,6 +10,11 @@ status: public_reference
 
 | Skill | Use when | Path |
 |---|---|---|
+| project-initialization | greenfield / major foundation変更で実装開始前の最小boundaryとreadinessを決める | `.agents/skills/project-initialization/SKILL.md` |
+| requirements-interview | material requirement gapが実装結果を分岐させ、current evidenceだけでは一意に決まらない | `.agents/skills/requirements-interview/SKILL.md` |
+| change-impact-analysis | 既存変更の処理経路を追い、MUST_CHANGE / CHECK_ONLY / NO_CHANGEを分ける | `.agents/skills/change-impact-analysis/SKILL.md` |
+| technical-design-document | durable decisionをどのartifact ownerへ残すべきかを決める | `.agents/skills/technical-design-document/SKILL.md` |
+| deployment-diagnosis | deploy / DNS / TLS / proxy / process / DB等のfirst broken boundaryを観測から特定する | `.agents/skills/deployment-diagnosis/SKILL.md` |
 | requirements-guard | current requirement、canonical、implementation、testsの矛盾や反映漏れがmaterial | `.agents/skills/requirements-guard/SKILL.md` |
 | test-driven-development | 新機能・bugfix・behavior changeをvalid Redから最小Greenへ進める | `.agents/skills/test-driven-development/SKILL.md` |
 | qa-quality-assurance | 利用者/事業riskからtest conditionと優先度を設計する | `.agents/skills/qa-quality-assurance/SKILL.md` |
@@ -20,6 +25,25 @@ status: public_reference
 | configuration-boundary | runtime/deployment/provider/secret/derived valueのownershipとvariation axisがmaterial | `.agents/skills/configuration-boundary/SKILL.md` |
 
 ## Skill families
+
+### Project lifecycle
+
+```text
+新しいproject / major foundationをどう始めるか?
+  -> project-initialization
+
+実装結果を変える要件不足があるか?
+  -> requirements-interview
+
+既存変更はどこまで波及するか?
+  -> change-impact-analysis
+
+durableな設計判断をどこへ残すか?
+  -> technical-design-document
+
+deploy障害はどの境界で最初に壊れたか?
+  -> deployment-diagnosis
+```
 
 ### Development flow
 
