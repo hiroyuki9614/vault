@@ -71,13 +71,13 @@ Repository-level baselineとして次を強制します。
 - bounded CI execution
 - GitHub Actions commit SHA pinning
 - CodeQL for JavaScript/TypeScript and Python
-- dependency review on pull requests
+- locked dependency audit with `npm audit --audit-level=high`
 - Dependabot for npm / GitHub Actions
 - CODEOWNERS for security-critical boundaries
 - Security reporting policy
 - architecture regression checks
 
-詳細とProduction導入前チェックは [`docs/ENTERPRISE_READINESS.md`](docs/ENTERPRISE_READINESS.md) を参照してください。Repository管理設定は [`docs/REPOSITORY_GOVERNANCE.md`](docs/REPOSITORY_GOVERNANCE.md) を参照してください。
+詳細とProduction導入前チェックは [`docs/ENTERPRISE_READINESS.md`](docs/ENTERPRISE_READINESS.md) を参照してください。Repository管理設定は [`docs/REPOSITORY_GOVERNANCE.md`](docs/REPOSITORY_GOVERNANCE.md)、security automationは [`docs/SECURITY_AUTOMATION.md`](docs/SECURITY_AUTOMATION.md) を参照してください。
 
 これはSOC 2 / ISO 27001等の認証、SLA、managed backupを意味しません。Production organization側の責務も同文書で分離しています。
 
@@ -150,6 +150,7 @@ unknown
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — runtime / canonical / data boundary
 - [`docs/ENTERPRISE_READINESS.md`](docs/ENTERPRISE_READINESS.md) — enterprise engineering baseline / deployment checklist / non-claims
 - [`docs/REPOSITORY_GOVERNANCE.md`](docs/REPOSITORY_GOVERNANCE.md) — GitHub source/admin governance boundary
+- [`docs/SECURITY_AUTOMATION.md`](docs/SECURITY_AUTOMATION.md) — source-controlled security checks / GitHub graph enhancement boundary
 - [`SECURITY.md`](SECURITY.md) — vulnerability reporting / deployment security boundary
 - [`docs/RESPONSIBILITY_BOUNDARIES.md`](docs/RESPONSIBILITY_BOUNDARIES.md) — Responsibility / Capability / Port / dependency boundary
 - [`docs/FUNCTIONAL_CORE_EFFECTFUL_ADAPTER.md`](docs/FUNCTIONAL_CORE_EFFECTFUL_ADAPTER.md) — pure decision logic と external I/O の分離
