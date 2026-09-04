@@ -24,7 +24,8 @@
     ServerSignature Off
 
     ProxyRequests Off
-    ProxyPreserveHost On
+    ProxyPreserveHost Off
+    ProxyAddHeaders On
     ProxyTimeout 15
 
     # Match the Node runtime body boundary.
@@ -50,12 +51,16 @@
     ProxyPass        /v1/ http://127.0.0.1:3100/v1/ connectiontimeout=2 timeout=15 retry=0
     ProxyPassReverse /v1/ http://127.0.0.1:3100/v1/
 
-    # This vhost is a reverse-proxy boundary only. Do not serve repository files.
-    DocumentRoot /var/empty/vault
-    <Directory /var/empty/vault>
-        Require all denied
+    # Keep non-proxied paths on an intentionally empty document root.
+    # Create it during deployment; do not place repository files here.
+    DocumentRoot /var/www/vault-empty
+    <Directory /var/www/vault-empty>
+        Options -Indexes
+        AllowOverride None
+        Require all granted
     </Directory>
 
     ErrorLog ${APACHE_LOG_DIR}/vault-error.log
-    CustomLog ${APACHE_LOG_DIR}/vault-access.log combined
+    LogFormat "%h %l %u %t \"%r\" %>s %b request_id=\"%{X-Request-ID}o\"" vault_combined
+    CustomLog ${APACHE_LOG_DIR}/vault-access.log vault_combined
 </VirtualHost>
