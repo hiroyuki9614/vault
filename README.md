@@ -40,6 +40,16 @@ public.documents  <- canonical data
 - [`docs/FUNCTIONAL_CORE_EFFECTFUL_ADAPTER.md`](docs/FUNCTIONAL_CORE_EFFECTFUL_ADAPTER.md) — pure decision logicと外部I/Oの分離
 - [`docs/SKILL_DISTILLATION.md`](docs/SKILL_DISTILLATION.md) — Agent Skillをtype / trait /固有semanticへ蒸留するcontract
 
+## Public Agent Skills
+
+AI開発で再利用できる境界Skillです。入口は [` .agents/SKILLS_INDEX.md`](.agents/SKILLS_INDEX.md) です。
+
+- [`dependency-boundary`](.agents/skills/dependency-boundary/SKILL.md) — semantic ownership、public/private境界、dependency directionを分類
+- [`functional-decomposition`](.agents/skills/functional-decomposition/SKILL.md) — meaningful decisionとexternal effectを分離すべきか判定
+- [`configuration-boundary`](.agents/skills/configuration-boundary/SKILL.md) — domain/config/provider/secret/derived valueのownershipを8分類
+
+Skillは必要なtaskでだけ読み、Skill利用自体を目的にしません。
+
 ## Quick start
 
 1. Supabase project を作成します。
@@ -57,6 +67,7 @@ public.documents  <- canonical data
 
 - Supabase schema / RLS / RPC migrations
 - public architecture contract
+- reusable public Agent Skills
 - AI Agent rules
 - synthetic templates / examples
 - architecture regression check
