@@ -32,7 +32,7 @@ async function start(fetchFn?: typeof fetch): Promise<string> {
 }
 
 describe('Vault HTTP server', () => {
-  it('serves unauthenticated liveness for nginx/systemd probes', async () => {
+  it('serves unauthenticated liveness for Apache/systemd probes', async () => {
     const baseUrl = await start();
     const response = await fetch(`${baseUrl}/health/live`);
     expect(response.status).toBe(200);
@@ -51,6 +51,40 @@ describe('Vault HTTP server', () => {
     });
     expect(response.status).toBe(401);
     expect(await response.json()).toMatchObject({ error: 'unauthenticated' });
+  });
+
+  it('requires JSON content type on authenticated API calls', async () => {
+    const baseUrl = await start();
+    const response = await fetch(`${baseUrl}/v1/documents/get-by-id`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer user-jwt',
+        'content-type': 'text/plain',
+      },
+      body: '{}',
+    });
+    expect(response.status).toBe(415);
+    expect(await response.json()).toMatchObject({ error: 'unsupported_media_type' });
+  });
+
+  it('lets authenticated unknown API routes reach the Node router without calling Supabase', async () => {
+    let upstreamCalls = 0;
+    const fetchFn: typeof fetch = async () => {
+      upstreamCalls += 1;
+      throw new Error('unexpected upstream call');
+    };
+    const baseUrl = await start(fetchFn);
+    const response = await fetch(`${baseUrl}/v1/not-a-route`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer user-jwt',
+        'content-type': 'application/json',
+      },
+      body: '{}',
+    });
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ error: 'not_found' });
+    expect(upstreamCalls).toBe(0);
   });
 
   it('forwards bearer identity and anon key only to the named semantic RPC', async () => {
@@ -86,6 +120,48 @@ describe('Vault HTTP server', () => {
     const headers = calls[0]?.init?.headers as Record<string, string>;
     expect(headers.authorization).toBe('Bearer user-jwt');
     expect(headers.apikey).toBe('public-key');
+  });
+
+  it('maps semantic permission denial to HTTP 403', async () => {
+    const fetchFn: typeof fetch = async () => new Response(
+      JSON.stringify({ message: 'permission_denied', code: 'P0001' }),
+      { status: 400, headers: { 'content-type': 'application/json' } },
+    );
+    const baseUrl = await start(fetchFn);
+    const response = await fetch(`${baseUrl}/v1/documents/get-by-id`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer user-jwt',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        vaultId: '11111111-1111-4111-8111-111111111111',
+        documentId: '22222222-2222-4222-8222-222222222222',
+      }),
+    });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: 'permission_denied', retryable: false });
+  });
+
+  it('maps upstream availability failure to bounded HTTP 503', async () => {
+    const fetchFn: typeof fetch = async () => new Response(
+      JSON.stringify({ message: 'temporary upstream failure' }),
+      { status: 503, headers: { 'content-type': 'application/json' } },
+    );
+    const baseUrl = await start(fetchFn);
+    const response = await fetch(`${baseUrl}/v1/documents/get-by-id`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer user-jwt',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        vaultId: '11111111-1111-4111-8111-111111111111',
+        documentId: '22222222-2222-4222-8222-222222222222',
+      }),
+    });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: 'unavailable', retryable: true });
   });
 
   it('enforces the configured request body limit', async () => {
