@@ -1,0 +1,141 @@
+name: release-integrity
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: release-integrity-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bundle:
+    name: bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install locked build dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build production runtime
+        run: npm run build
+
+      - name: Test release bundle and integrity contracts
+        run: python -m unittest tests/test_release_bundle.py tests/test_release_integrity_check.py
+
+      - name: Check release integrity contract
+        run: python tooling/release_integrity_check.py
+
+      - name: Build deterministic release bundle twice
+        run: |
+          set -euo pipefail
+          rm -rf release /tmp/vault-release-rebuild
+          python tooling/build_release_bundle.py --commit-sha "$GITHUB_SHA" --output-dir release
+          python tooling/build_release_bundle.py --commit-sha "$GITHUB_SHA" --output-dir /tmp/vault-release-rebuild
+          bundle=$(find release -maxdepth 1 -name 'vault-runtime-*.tar.gz' -print -quit)
+          test -n "$bundle"
+          cmp "$bundle" "/tmp/vault-release-rebuild/$(basename "$bundle")"
+          python tooling/build_release_bundle.py --verify-bundle "$bundle"
+
+      - name: Generate runtime CycloneDX SBOM
+        run: |
+          set -euo pipefail
+          npm sbom --omit=dev --sbom-format=cyclonedx > release/vault-runtime.sbom.cdx.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path('release/vault-runtime.sbom.cdx.json').read_text(encoding='utf-8'))
+          assert payload.get('bomFormat') == 'CycloneDX'
+          assert payload.get('specVersion')
+          PY
+
+      - name: Generate and verify release checksums
+        run: |
+          set -euo pipefail
+          (
+            cd release
+            sha256sum vault-runtime-*.tar.gz vault-runtime.sbom.cdx.json > SHA256SUMS
+            sha256sum --check SHA256SUMS
+          )
+
+  attest-tag:
+    name: attest-tag
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Require version tag to match package version
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          test "$GITHUB_REF_NAME" = "v${version}"
+
+      - name: Install locked build dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build production runtime
+        run: npm run build
+
+      - name: Build release bundle and SBOM
+        run: |
+          set -euo pipefail
+          rm -rf release
+          python tooling/build_release_bundle.py --commit-sha "$GITHUB_SHA" --output-dir release
+          npm sbom --omit=dev --sbom-format=cyclonedx > release/vault-runtime.sbom.cdx.json
+          (
+            cd release
+            sha256sum vault-runtime-*.tar.gz vault-runtime.sbom.cdx.json > SHA256SUMS
+            sha256sum --check SHA256SUMS
+          )
+          bundle=$(find release -maxdepth 1 -name 'vault-runtime-*.tar.gz' -print -quit)
+          python tooling/build_release_bundle.py --verify-bundle "$bundle"
+
+      - name: Upload attested release materials
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: vault-runtime-${{ github.ref_name }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Attest release bundle build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: release/vault-runtime-*.tar.gz
+
+      - name: Attest runtime SBOM to release bundle
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: release/vault-runtime-*.tar.gz
+          sbom-path: release/vault-runtime.sbom.cdx.json

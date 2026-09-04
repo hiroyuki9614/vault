@@ -18,6 +18,10 @@
       "context": "check"
     },
     {
+      "workflow": "release-integrity",
+      "context": "bundle"
+    },
+    {
       "workflow": "database-contract",
       "context": "postgres-contract"
     },

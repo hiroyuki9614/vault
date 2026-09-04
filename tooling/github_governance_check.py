@@ -8,6 +8,7 @@ CONTRACT = ROOT / "config" / "github-main-ruleset-contract.json"
 
 EXPECTED_CHECKS = [
     ("architecture", "check"),
+    ("release-integrity", "bundle"),
     ("database-contract", "postgres-contract"),
     ("dependency-vulnerability-scan", "scan"),
     ("codeql", "CodeQL (javascript-typescript)"),
@@ -57,6 +58,7 @@ def check(root: Path = ROOT) -> list[str]:
 
     workflow_jobs = {
         "architecture": (root / ".github" / "workflows" / "architecture.yml", "  check:"),
+        "release-integrity": (root / ".github" / "workflows" / "release-integrity.yml", "  bundle:"),
         "database-contract": (root / ".github" / "workflows" / "database-contract.yml", "  postgres-contract:"),
         "dependency-vulnerability-scan": (root / ".github" / "workflows" / "dependency-vulnerability-scan.yml", "  scan:"),
     }

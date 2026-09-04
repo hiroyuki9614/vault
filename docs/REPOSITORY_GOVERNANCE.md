@@ -17,6 +17,9 @@ The repository itself enforces or declares:
 - bounded workflow execution time
 - deterministic `npm ci`
 - strict TypeScript / Vitest / architecture checks
+- deterministic runtime release bundle + internal SHA-256 manifest
+- CycloneDX runtime SBOM + `SHA256SUMS`
+- tag-only GitHub provenance/SBOM attestations
 - executable PostgreSQL migration + RLS/RPC acceptance with synthetic identities
 - CodeQL analysis for JavaScript/TypeScript and Python
 - OSV-Scanner against the committed `package-lock.json`, failing on any known vulnerability
@@ -37,6 +40,7 @@ A production organization should create an **active repository ruleset targeting
 The required status contexts are derived from jobs that have actually completed successfully on `main`, not from workflow display names:
 
 - `check` from workflow `architecture`
+- `bundle` from workflow `release-integrity`
 - `postgres-contract` from workflow `database-contract`
 - `scan` from workflow `dependency-vulnerability-scan`
 - `CodeQL (javascript-typescript)` from workflow `codeql`
@@ -45,7 +49,7 @@ The required status contexts are derived from jobs that have actually completed 
 Recommended minimum ruleset behavior:
 
 1. Require pull requests before merging.
-2. Require all five status contexts above.
+2. Require all six status contexts above.
 3. Require the branch to be up to date before merge.
 4. Block force pushes.
 5. Block branch deletion.
@@ -69,6 +73,7 @@ Block force pushes: yes
 Block deletion: yes
 Required contexts:
   check
+  bundle
   postgres-contract
   scan
   CodeQL (javascript-typescript)
@@ -91,6 +96,12 @@ GitHub-side features are separately administered state. Recommended production s
 - require signed commits or vigilant mode when organizational policy requires it.
 
 The current public reference repository enforces an OSV lockfile scan entirely from source even when Dependency Graph is not enabled. GitHub Dependency Review is an additional graph-backed control, not a substitute for the source-enforced OSV scan.
+
+## Release integrity boundary
+
+`release-integrity` is a required source check. On pull requests and `main` it builds the production runtime, constructs the release tarball twice, requires byte-for-byte equality, verifies the archive's internal `RELEASE-MANIFEST.json`, generates a CycloneDX runtime SBOM, and verifies SHA-256 checksums.
+
+Only version-tag jobs receive OIDC/attestation write authority. They require `v<package.json version>`, rebuild the tagged commit, upload the release materials as a GitHub Actions artifact, and create GitHub provenance plus SBOM attestations. See `docs/RELEASE_INTEGRITY.md`.
 
 ## Database contract boundary
 
