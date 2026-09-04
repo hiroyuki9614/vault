@@ -38,6 +38,12 @@ jobs:
           cleanup() {
             "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
           }
+          diagnostics() {
+            echo '--- docker compose ps ---' >&2
+            "${compose[@]}" ps >&2 || true
+            echo '--- docker compose logs ---' >&2
+            "${compose[@]}" logs --no-color --tail=200 apache vault-node >&2 || true
+          }
           trap cleanup EXIT
 
           "${compose[@]}" up -d
@@ -52,11 +58,15 @@ jobs:
             fi
             sleep 0.25
           done
-          test "$ready" -eq 1
+          if [ "$ready" -ne 1 ]; then
+            diagnostics
+            exit 1
+          fi
           grep -q '"status":"ok"' /tmp/docker-vault-health.json
           grep -q '"requestId":"' /tmp/docker-vault-health.json
           if grep -q 'attacker-controlled-request-id' /tmp/docker-vault-health.json; then
             echo 'Docker Apache did not replace the untrusted X-Request-ID' >&2
+            diagnostics
             exit 1
           fi
 
