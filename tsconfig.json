@@ -18,6 +18,7 @@
   },
   "include": [
     "core/**/*.ts",
-    "documents/**/*.ts"
+    "documents/**/*.ts",
+    "server/**/*.ts"
   ]
 }

@@ -124,6 +124,15 @@ describe('Supabase RPC document adapter', () => {
     });
   });
 
+  it('normalizes semantic permission_denied exceptions from database RPCs', async () => {
+    const store = createSupabaseRpcDocumentStore(failingClient('permission_denied'));
+    await expect(store.getById(VAULT_ID, DOCUMENT_ID)).rejects.toMatchObject({
+      code: 'permission_denied',
+      retryable: false,
+      providerCode: 'P0001',
+    });
+  });
+
   it('normalizes version conflicts without exposing provider messages as the contract', async () => {
     const store = createSupabaseRpcDocumentStore(
       failingClient('version_conflict: internal database detail'),

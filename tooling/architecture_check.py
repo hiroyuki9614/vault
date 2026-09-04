@@ -10,6 +10,7 @@ ACTION_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 USES_LINE_RE = re.compile(r"^-?\s*uses:\s*([^#\s]+)")
 OSV_SCANNER_ACTION = "google/osv-scanner-action/osv-scanner-action@baa4139e56d6312335d899e6ba045fa16d1d3d0b"
 WRITER_GUARD = "coalesce(public.current_vault_role(p_vault_id), '') not in ('owner', 'editor')"
+LOOPBACK_DEFAULT = "env.VAULT_HOST?.trim() || '127.0.0.1'"
 
 
 def load_config() -> dict:
@@ -34,6 +35,9 @@ def check(root: Path = ROOT) -> list[str]:
     if config.get("code_scanning_workflow_required") is not True: errors.append("code_scanning_workflow_required must be true")
     if config.get("dependency_vulnerability_scan_required") is not True: errors.append("dependency_vulnerability_scan_required must be true")
     if config.get("database_contract_test_required") is not True: errors.append("database_contract_test_required must be true")
+    if config.get("reverse_proxy_runtime") != "apache_http_server": errors.append("reverse_proxy_runtime must be apache_http_server")
+    if config.get("apache_reverse_proxy_runtime_required") is not True: errors.append("apache_reverse_proxy_runtime_required must be true")
+    if "nginx_reverse_proxy_runtime_required" in config: errors.append("superseded Nginx architecture flag must not remain")
 
     for path in config.get("required_paths", []):
         if not (root / path).exists(): errors.append(f"missing required path: {path}")
@@ -47,6 +51,10 @@ def check(root: Path = ROOT) -> list[str]:
         for name, version in package.get("devDependencies", {}).items():
             if not isinstance(version, str) or version.startswith(("^", "~", ">", "<", "*")):
                 errors.append(f"devDependency must be exact: {name}={version}")
+        scripts = package.get("scripts", {})
+        if scripts.get("build") != "tsc -p tsconfig.build.json": errors.append("production build must use tsconfig.build.json")
+        if scripts.get("start") != "node dist/server/main.js": errors.append("production start must execute dist/server/main.js")
+        if "npm run build" not in scripts.get("check:ts", ""): errors.append("TypeScript check must include production build")
 
     workflows_root = root / ".github" / "workflows"
     if workflows_root.exists():
@@ -69,8 +77,30 @@ def check(root: Path = ROOT) -> list[str]:
     architecture_workflow = workflows_root / "architecture.yml"
     if architecture_workflow.exists():
         text = architecture_workflow.read_text(encoding="utf-8")
+        if "runs-on: ubuntu-24.04" not in text: errors.append("architecture workflow must pin ubuntu-24.04")
+        if "persist-credentials: false" not in text: errors.append("architecture checkout must not persist credentials")
         if "npm ci" not in text: errors.append("architecture workflow must use npm ci")
         if "npm install" in text: errors.append("architecture workflow must not use npm install")
+        if "npm run build" not in text: errors.append("architecture workflow must build the production runtime")
+        for fragment in (
+            "node dist/server/main.js",
+            "curl --fail --silent http://127.0.0.1:3100/health/live",
+            'kill -TERM "$pid"',
+            'wait "$pid"',
+        ):
+            if fragment not in text:
+                errors.append(f"architecture workflow missing production runtime smoke invariant: {fragment}")
+        for fragment in (
+            "sudo a2enmod ssl proxy proxy_http headers setenvif",
+            "deploy/apache/vault.conf.example",
+            "sudo apachectl configtest",
+            "--resolve vault.example.com:443:127.0.0.1",
+            "Authorization: Bearer synthetic-ci-token",
+            "test \"$anonymous_status\" = '401'",
+            "test \"$authenticated_status\" = '404'",
+        ):
+            if fragment not in text:
+                errors.append(f"architecture workflow missing Apache reverse-proxy invariant: {fragment}")
 
     codeql_workflow = workflows_root / "codeql.yml"
     if codeql_workflow.exists():
@@ -173,10 +203,123 @@ def check(root: Path = ROOT) -> list[str]:
     if public_api.exists() and "supabase" in public_api.read_text(encoding="utf-8").lower():
         errors.append("documents public API must remain provider-free")
 
+    runtime_config = root / "server" / "config.ts"
+    if runtime_config.exists():
+        text = runtime_config.read_text(encoding="utf-8")
+        if LOOPBACK_DEFAULT not in text:
+            errors.append("server runtime must default VAULT_HOST to 127.0.0.1")
+        for fragment in ("VAULT_ALLOW_PUBLIC_BIND", "SUPABASE_RPC_TIMEOUT_MS", "VAULT_MAX_BODY_BYTES"):
+            if fragment not in text: errors.append(f"server runtime configuration missing invariant: {fragment}")
+        if "process.env" in text: errors.append("server config parser must receive environment explicitly")
+        if "SUPABASE_SERVICE_ROLE" in text: errors.append("normal server runtime must not accept a Supabase service-role credential")
+
+    http_app = root / "server" / "http-app.ts"
+    if http_app.exists():
+        text = http_app.read_text(encoding="utf-8")
+        for fragment in (
+            "/health/live",
+            "/health/ready",
+            "/v1/documents/get-by-path",
+            "/v1/documents/get-by-id",
+            "/v1/documents/put",
+            "/v1/documents/delete",
+            "requireBearer",
+            "requireJsonContentType",
+            "config.maxBodyBytes",
+            "createSupabaseRpcDocumentStore",
+            "DocumentStoreError",
+            "x-request-id",
+        ):
+            if fragment not in text: errors.append(f"HTTP server missing invariant: {fragment}")
+        if "SUPABASE_SERVICE_ROLE" in text: errors.append("HTTP server must not use service-role credentials")
+
+    http_rpc_client = root / "server" / "supabase-http-rpc-client.ts"
+    if http_rpc_client.exists():
+        text = http_rpc_client.read_text(encoding="utf-8")
+        for fragment in (
+            "authorization: `Bearer ${config.accessToken}`",
+            "apikey: config.anonKey",
+            "AbortSignal.timeout(config.timeoutMs)",
+            "/rest/v1/rpc/",
+        ):
+            if fragment not in text: errors.append(f"Supabase HTTP RPC client missing invariant: {fragment}")
+        if "service_role" in text.lower(): errors.append("Supabase HTTP RPC client must remain user-bearer scoped")
+
+    server_main = root / "server" / "main.ts"
+    if server_main.exists():
+        text = server_main.read_text(encoding="utf-8")
+        for fragment in ("process.env", "SIGTERM", "SIGINT", "server.close(", "server.closeAllConnections()"):
+            if fragment not in text: errors.append(f"server lifecycle missing invariant: {fragment}")
+
+    env_example = root / ".env.example"
+    if env_example.exists():
+        text = env_example.read_text(encoding="utf-8")
+        if "VAULT_HOST=127.0.0.1" not in text: errors.append("example runtime environment must bind loopback")
+        if "VAULT_ALLOW_PUBLIC_BIND=true" in text: errors.append("example runtime environment must not opt into public Node bind")
+        if "SUPABASE_SERVICE_ROLE" in text: errors.append("example runtime environment must not request service-role credentials")
+
+    apache = root / "deploy" / "apache" / "vault.conf.example"
+    if apache.exists():
+        text = apache.read_text(encoding="utf-8")
+        for fragment in (
+            "Redirect permanent / https://vault.example.com/",
+            "SSLEngine on",
+            "ProxyRequests Off",
+            "ProxyPreserveHost Off",
+            "ProxyAddHeaders On",
+            "SetEnvIfNoCase Authorization",
+            'RequestHeader set Authorization "%{VAULT_AUTHORIZATION}e" env=VAULT_AUTHORIZATION',
+            'RequestHeader set X-Forwarded-Proto "https"',
+            "ProxyPass        /health/live  http://127.0.0.1:3100/health/live",
+            "ProxyPass        /health/ready http://127.0.0.1:3100/health/ready",
+            "ProxyPass        /v1/ http://127.0.0.1:3100/v1/",
+            "connectiontimeout=2 timeout=15 retry=0",
+            "LimitRequestBody 1048576",
+            "LimitRequestFieldSize 8190",
+            "LimitRequestFields 100",
+            "DocumentRoot /var/www/vault-empty",
+            "Options -Indexes",
+            "AllowOverride None",
+        ):
+            if fragment not in text: errors.append(f"Apache deployment missing invariant: {fragment}")
+        active_text = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+        if re.search(r"^\s*ServerTokens\s+", active_text, flags=re.MULTILINE):
+            errors.append("Apache VirtualHost reference must not define server-global ServerTokens")
+        if "ProxyRequests On" in active_text: errors.append("Apache reverse proxy must not enable forward proxying")
+        if "0.0.0.0:3100" in text: errors.append("Apache must proxy to the loopback Node upstream")
+
+    for stale_path in (root / "deploy" / "nginx", root / "docs" / "NGINX_DEPLOYMENT.md"):
+        if stale_path.exists(): errors.append(f"superseded Nginx artifact must not remain: {stale_path.relative_to(root)}")
+
+    systemd = root / "deploy" / "systemd" / "vault.service.example"
+    if systemd.exists():
+        text = systemd.read_text(encoding="utf-8")
+        for fragment in (
+            "User=vault",
+            "EnvironmentFile=/etc/vault/vault.env",
+            "ExecStart=/usr/bin/node /opt/vault/current/dist/server/main.js",
+            "NoNewPrivileges=true",
+            "ProtectSystem=strict",
+            "ProtectHome=true",
+            "CapabilityBoundingSet=",
+            "KillSignal=SIGTERM",
+        ):
+            if fragment not in text: errors.append(f"systemd deployment missing invariant: {fragment}")
+
+    tsconfig = root / "tsconfig.json"
+    if tsconfig.exists() and '"server/**/*.ts"' not in tsconfig.read_text(encoding="utf-8"):
+        errors.append("TypeScript typecheck must include server runtime")
+
+    build_config = root / "tsconfig.build.json"
+    if build_config.exists():
+        text = build_config.read_text(encoding="utf-8")
+        for fragment in ('"noEmit": false', '"outDir": "dist"', '"server/**/*.ts"', '"**/*.test.ts"'):
+            if fragment not in text: errors.append(f"production build config missing invariant: {fragment}")
+
     codeowners = root / ".github" / "CODEOWNERS"
     if codeowners.exists():
         text = codeowners.read_text(encoding="utf-8")
-        for path in ("/supabase/migrations/", "/documents/machine/core/", "/.github/"):
+        for path in ("/supabase/migrations/", "/documents/machine/core/", "/server/", "/deploy/", "/.github/"):
             if path not in text: errors.append(f"CODEOWNERS missing security-critical path: {path}")
 
     forbidden_text = ["kind: personal", "partner vault", "canonical_repository: hiroyuki9614/vault", "supabase_outage_write_fallback: allowed"]
@@ -187,6 +330,17 @@ def check(root: Path = ROOT) -> list[str]:
         for needle in forbidden_text:
             if needle.lower() in text: errors.append(f"legacy contract remains in {relative}: {needle}")
 
+    for relative in (
+        "README.md",
+        "docs/ARCHITECTURE.md",
+        "docs/ENTERPRISE_READINESS.md",
+        "docs/APACHE_DEPLOYMENT.md",
+        ".github/pull_request_template.md",
+    ):
+        path = root / relative
+        if path.exists() and "nginx" in path.read_text(encoding="utf-8").lower():
+            errors.append(f"superseded Nginx wording remains in {relative}")
+
     return errors
 
 
@@ -195,7 +349,7 @@ def main() -> int:
     if errors:
         for error in errors: print(f"FAIL: {error}")
         return 1
-    print("PASS: public vault meets the enterprise executable database contract baseline")
+    print("PASS: public vault meets the enterprise Apache/database contract baseline")
     return 0
 
 

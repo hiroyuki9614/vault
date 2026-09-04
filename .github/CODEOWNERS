@@ -10,6 +10,8 @@
 /documents/machine/core/ @hiroyuki9614
 /documents/machine/ports/ @hiroyuki9614
 /documents/machine/adapters/ @hiroyuki9614
+/server/ @hiroyuki9614
+/deploy/ @hiroyuki9614
 /core/machine/ @hiroyuki9614
 /tooling/architecture_check.py @hiroyuki9614
 /config/architecture.json @hiroyuki9614

@@ -138,7 +138,11 @@ function semanticRpcError(error: RpcErrorLike): DocumentStoreError {
     message.includes('expected_version_must_be_null_on_create')
   ) {
     code = 'invalid_request';
-  } else if (providerCode === '42501' || message.includes('permission denied')) {
+  } else if (
+    providerCode === '42501' ||
+    message.includes('permission_denied') ||
+    message.includes('permission denied')
+  ) {
     code = 'permission_denied';
   } else if (
     providerCode === 'PGRST301' ||

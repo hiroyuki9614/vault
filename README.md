@@ -6,6 +6,8 @@ Supabase を canonical data store にし、TypeScript の Functional Core / Effe
 
 ## Runtime architecture
 
+Library / direct composition:
+
 ```text
 Client / AI Agent
       |
@@ -29,6 +31,32 @@ Supabase Auth + RLS + PostgreSQL
 canonical Vault data
 ```
 
+Apache production runtime:
+
+```text
+HTTPS client
+    |
+    v
+Apache HTTP Server :443
+ TLS / body limit / proxy timeout
+    |
+    v
+127.0.0.1:3100
+Node.js 24 HTTP adapter
+    |
+    v
+DocumentService
+    |
+    v
+Supabase REST/RPC
+ caller Bearer JWT + publishable/anon key
+    |
+    v
+Supabase Auth + RLS + PostgreSQL
+```
+
+Apache を public listener とし、Node は既定で loopback のみに bind します。通常runtimeは Supabase service-role key を使いません。`/v1/*` の Bearer token を Apache → Node → Supabase Auth/RLS 境界へ伝播します。
+
 ```text
 core/machine/
   main/repository.json
@@ -42,6 +70,12 @@ documents/
     ports/     # semantic effect / error boundary
     adapters/  # Supabase RPC mapping
     runtime/   # composition + same-ID read-back
+
+server/
+  config.ts                    # explicit runtime config parser
+  http-app.ts                  # bounded HTTP adapter
+  supabase-http-rpc-client.ts  # bearer-scoped Supabase transport
+  main.ts                      # process lifecycle / graceful shutdown
 ```
 
 ### Functional rules
@@ -54,6 +88,7 @@ documents/
 - create は caller-generated UUID を必須にし、同一 create の再送で重複 row を作りません。
 - update も同一 `expectedVersion`・同一最終状態の再送を同じ commit 結果として扱います。
 - document write RPC は mutation/replay reconciliation 前に owner/editor を明示検証し、viewer/non-member は `permission_denied` で拒否します。
+- Apache/HTTP/環境変数/process lifecycle は effectful deployment boundary として pure core から分離します。
 - Supabase unavailable 時に GitHub Markdown へ write fallback しません。
 
 ## Enterprise engineering baseline
@@ -71,6 +106,14 @@ Repository-level baseline として次を強制します。
 - executable PostgreSQL migration + RLS/RPC acceptance with synthetic identities
 - exact direct development dependencies
 - committed npm lockfile + `npm ci`
+- production TypeScript emit + built-entrypoint smoke
+- loopback-only Node bind by default for Apache deployments
+- bounded HTTP body / header / request / upstream / shutdown timeouts
+- Bearer-scoped Supabase RPC; no normal-runtime service-role credential
+- graceful SIGTERM/SIGINT shutdown
+- Apache reverse-proxy reference configuration
+- `apachectl configtest` and live Apache → Node CI smoke
+- hardened systemd reference unit
 - bounded CI execution
 - GitHub Actions commit SHA pinning
 - CodeQL for JavaScript/TypeScript and Python
@@ -81,7 +124,7 @@ Repository-level baseline として次を強制します。
 - Security reporting policy
 - architecture regression checks
 
-Production導入前チェックは [`docs/ENTERPRISE_READINESS.md`](docs/ENTERPRISE_READINESS.md)、Repository管理設定は [`docs/REPOSITORY_GOVERNANCE.md`](docs/REPOSITORY_GOVERNANCE.md)、security automation は [`docs/SECURITY_AUTOMATION.md`](docs/SECURITY_AUTOMATION.md) を参照してください。
+Production導入前チェックは [`docs/ENTERPRISE_READINESS.md`](docs/ENTERPRISE_READINESS.md)、Apache配置は [`docs/APACHE_DEPLOYMENT.md`](docs/APACHE_DEPLOYMENT.md)、Repository管理設定は [`docs/REPOSITORY_GOVERNANCE.md`](docs/REPOSITORY_GOVERNANCE.md)、security automation は [`docs/SECURITY_AUTOMATION.md`](docs/SECURITY_AUTOMATION.md) を参照してください。
 
 これは SOC 2 / ISO 27001 等の認証、SLA、managed backup を意味しません。Production organization 側の責務は別途明示しています。
 
@@ -144,6 +187,26 @@ anon         -> RPC execute不可
 
 これにより、viewer が現在stateを読めることを利用して exact-replay 判定から write 成功相当の結果を得る経路を防ぎます。
 
+## Apache HTTP surface
+
+health endpoint は無認証です。
+
+```text
+GET /health/live
+GET /health/ready
+```
+
+Document API は Bearer token 必須です。
+
+```text
+POST /v1/documents/get-by-path
+POST /v1/documents/get-by-id
+POST /v1/documents/put
+POST /v1/documents/delete
+```
+
+これは generic Supabase proxy ではありません。公開するのは named Document Capability のみです。
+
 ## Stable failure contract
 
 Supabase/provider error object を上位へそのまま返しません。Port 境界で次の semantic code へ変換します。
@@ -161,7 +224,7 @@ invalid_response
 unknown
 ```
 
-`unavailable` は transport/infrastructure 上 retry 可能な分類です。実際の retry/reconciliation policy は caller が所有し、core 自身は sleep/retry を行いません。
+HTTP adapter も provider message を返さず、上記semantic failureと `read_back_mismatch` 等の境界codeへ変換します。`unavailable` は HTTP 503 となり、実際の retry/reconciliation policy は caller が所有します。
 
 ## Canonical boundaries
 
@@ -170,6 +233,7 @@ unknown
 - executable domain policy: TypeScript `*/machine/core`
 - public capability API: TypeScript `<capability>/public.ts`
 - provider-free detailed contract: TypeScript `*/machine/contracts` / `*/machine/ports`
+- HTTP/Apache/systemd: deployment/effect boundary
 - architecture / Agent contract: Git Markdown / JSON
 - credentials: deployment secret store
 
@@ -191,6 +255,7 @@ synthetic auth bootstrap
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — runtime / canonical / data boundary
 - [`docs/ENTERPRISE_READINESS.md`](docs/ENTERPRISE_READINESS.md) — enterprise engineering baseline / deployment checklist / non-claims
+- [`docs/APACHE_DEPLOYMENT.md`](docs/APACHE_DEPLOYMENT.md) — Apache + systemd production topology
 - [`docs/REPOSITORY_GOVERNANCE.md`](docs/REPOSITORY_GOVERNANCE.md) — GitHub source/admin governance boundary
 - [`docs/SECURITY_AUTOMATION.md`](docs/SECURITY_AUTOMATION.md) — source-controlled security checks / GitHub graph enhancement boundary
 - [`SECURITY.md`](SECURITY.md) — vulnerability reporting / deployment security boundary
@@ -230,8 +295,19 @@ Node.js 24 / npm 11 を使用します。
 
 ```bash
 npm ci
-npm run check:ts
+npm run check
+npm run build
 ```
+
+Apache upstreamとして起動する場合:
+
+```bash
+cp .env.example /etc/vault/vault.env
+# 実値はsecret/configuration管理経由で設定する
+npm start
+```
+
+本番ではshellで直接常駐させず、[`deploy/systemd/vault.service.example`](deploy/systemd/vault.service.example) を基準にsystemd管理し、[`deploy/apache/vault.conf.example`](deploy/apache/vault.conf.example) をApacheへ配置します。詳細は [`docs/APACHE_DEPLOYMENT.md`](docs/APACHE_DEPLOYMENT.md) を参照してください。
 
 Supabase 側は:
 
@@ -240,7 +316,7 @@ Supabase 側は:
 3. `supabase/migrations/` を順番に適用
 4. application 側で `SUPABASE_URL` と publishable/anon key を注入
 5. Supabase Auth で認証
-6. TypeScript runtime から Supabase RPC adapter を composition
+6. Apache/HTTP利用時は呼出側の Bearer access token を `/v1/*` へ付与
 
 ## Validation
 
@@ -248,27 +324,30 @@ Supabase 側は:
 npm run check
 ```
 
-TypeScript のみ:
+TypeScript/runtime:
 
 ```bash
 npm run typecheck
 npm run test:ts
+npm run build
 ```
 
-Architecture boundary のみ:
+Architecture boundary:
 
 ```bash
 python -m unittest tests/test_architecture_check.py
 python tooling/architecture_check.py
 ```
 
-GitHub Actions ではさらに `database-contract`、`codeql`、`dependency-vulnerability-scan` を実行します。
+GitHub Actions ではさらに built runtime smoke、Apache `configtest` + live proxy smoke、`database-contract`、`codeql`、`dependency-vulnerability-scan` を実行します。
 
 ## Repository scope
 
 含むもの:
 
 - TypeScript Functional Core / Port / Adapter reference runtime
+- loopback Node.js HTTP runtime for Apache
+- Apache reverse-proxy + systemd deployment references
 - Supabase schema / RLS / semantic RPC migrations
 - stable provider-free document API
 - executable PostgreSQL migration/RLS/RPC acceptance
@@ -284,6 +363,7 @@ GitHub Actions ではさらに `database-contract`、`codeql`、`dependency-vuln
 - GitHub data fallback
 - managed backup / monitoring / SLA
 - compliance certification
+- DNS / certificate issuance / host firewall management
 - VPS / scheduler / notification runtime
 - generic Control Plane / Work Context / recovery machinery
 

@@ -1,0 +1,67 @@
+# Required modules on Debian/Ubuntu:
+#   a2enmod ssl proxy proxy_http headers setenvif
+# Optional HTTP/2:
+#   a2enmod http2
+#
+# Replace vault.example.com and certificate paths for the target environment.
+# If you want a reduced Server header, configure ServerTokens globally;
+# Apache does not permit ServerTokens inside a VirtualHost.
+
+<VirtualHost *:80>
+    ServerName vault.example.com
+
+    # Fixed canonical host avoids Host-header-controlled redirect targets.
+    Redirect permanent / https://vault.example.com/
+</VirtualHost>
+
+<VirtualHost *:443>
+    ServerName vault.example.com
+
+    SSLEngine on
+    SSLCertificateFile /etc/letsencrypt/live/vault.example.com/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/vault.example.com/privkey.pem
+    SSLProtocol -all +TLSv1.2 +TLSv1.3
+
+    ServerSignature Off
+
+    ProxyRequests Off
+    ProxyPreserveHost Off
+    ProxyAddHeaders On
+    ProxyTimeout 15
+
+    # Match the Node runtime body boundary.
+    LimitRequestBody 1048576
+    LimitRequestFieldSize 8190
+    LimitRequestFields 100
+
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "no-referrer"
+
+    # Preserve the caller Bearer identity explicitly at the trusted proxy boundary.
+    # Do not log VAULT_AUTHORIZATION or the Authorization header.
+    SetEnvIfNoCase Authorization "^(.+)$" VAULT_AUTHORIZATION=$1
+    RequestHeader set Authorization "%{VAULT_AUTHORIZATION}e" env=VAULT_AUTHORIZATION
+    RequestHeader set X-Forwarded-Proto "https"
+
+    ProxyPass        /health/live  http://127.0.0.1:3100/health/live  connectiontimeout=2 timeout=5 retry=0
+    ProxyPassReverse /health/live  http://127.0.0.1:3100/health/live
+
+    ProxyPass        /health/ready http://127.0.0.1:3100/health/ready connectiontimeout=2 timeout=5 retry=0
+    ProxyPassReverse /health/ready http://127.0.0.1:3100/health/ready
+
+    ProxyPass        /v1/ http://127.0.0.1:3100/v1/ connectiontimeout=2 timeout=15 retry=0
+    ProxyPassReverse /v1/ http://127.0.0.1:3100/v1/
+
+    # Keep non-proxied paths on an intentionally empty document root.
+    # Create it during deployment; do not place repository files here.
+    DocumentRoot /var/www/vault-empty
+    <Directory /var/www/vault-empty>
+        Options -Indexes
+        AllowOverride None
+        Require all granted
+    </Directory>
+
+    ErrorLog ${APACHE_LOG_DIR}/vault-error.log
+    LogFormat "%h %l %u %t \"%r\" %>s %b request_id=\"%{X-Request-ID}o\"" vault_combined
+    CustomLog ${APACHE_LOG_DIR}/vault-access.log vault_combined
+</VirtualHost>
