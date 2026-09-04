@@ -28,13 +28,13 @@ Supabase Auth + RLS + PostgreSQL
 canonical mutable data
 ```
 
-For an HTTP deployment, Nginx and the Node HTTP process are additional effectful boundaries around the same Capability:
+For an HTTP deployment, Apache HTTP Server and the Node HTTP process are additional effectful boundaries around the same Capability:
 
 ```text
 HTTPS client
   |
   v
-Nginx :443
+Apache HTTP Server :443
   |
   v
 127.0.0.1:3100 Node.js HTTP adapter
@@ -49,7 +49,7 @@ bearer-scoped Supabase REST/RPC
 Supabase Auth + RLS + PostgreSQL
 ```
 
-The functional core does not know about Nginx, sockets, environment variables, process signals, HTTP headers, or Supabase transport details.
+The functional core does not know about Apache, sockets, environment variables, process signals, HTTP headers, or Supabase transport details.
 
 ## Repository machine bootstrap
 
@@ -188,7 +188,7 @@ DeleteDocumentCommand
 
 `path` remains a locator. It is not identity evidence.
 
-## Nginx production boundary
+## Apache production boundary
 
 The public HTTP deployment surface is intentionally narrow:
 
@@ -203,14 +203,17 @@ POST /v1/documents/delete
 
 The HTTP adapter is not a generic Supabase RPC proxy.
 
-Nginx owns:
+Apache owns:
 
 - public TLS listener;
-- request-size boundary;
-- reverse-proxy connect/send/read timeouts;
-- trusted request-id and forwarding headers;
-- explicit Authorization forwarding;
-- rejection of unrelated paths.
+- fixed-host HTTP to HTTPS redirect;
+- reverse-proxy mapping to the loopback Node listener;
+- forward-proxy prohibition with `ProxyRequests Off`;
+- request body/header limits;
+- reverse-proxy connect/read timeouts;
+- trusted forwarding protocol header;
+- explicit caller Authorization preservation;
+- empty fallback document root for non-proxied paths.
 
 The Node process owns:
 
@@ -227,7 +230,7 @@ Normal application traffic uses the caller's Supabase access token plus the conf
 
 `/health/ready` proves that configuration was accepted and the Node process is serving requests. It deliberately does not perform a database query on every probe. Supabase availability is surfaced through bounded operation-level failures.
 
-The reference deployment is documented in [`NGINX_DEPLOYMENT.md`](NGINX_DEPLOYMENT.md).
+The reference deployment is documented in [`APACHE_DEPLOYMENT.md`](APACHE_DEPLOYMENT.md).
 
 ## Canonical ownership
 
@@ -244,7 +247,7 @@ Public capability API
 Provider-free detailed contracts
   -> TypeScript */machine/contracts and */machine/ports
 
-HTTP / Nginx / process lifecycle
+HTTP / Apache / process lifecycle
   -> effectful deployment boundary
 
 Schema / RLS / RPC definition
@@ -322,7 +325,7 @@ The dependency gate does not depend on the npm Advisory API. GitHub Dependency R
 ```text
 Supabase unavailable
   -> semantic unavailable failure
-  -> HTTP 503 at the Nginx/Node surface
+  -> HTTP 503 at the Apache/Node surface
   -> no GitHub fallback write
   -> no local second canonical
 ```
@@ -340,6 +343,8 @@ The runtime toolchain is pinned at repository level:
 - CI installs with `npm ci`
 - production emit via `tsconfig.build.json`
 - CI starts the emitted `dist/server/main.js`, verifies loopback health, sends SIGTERM, and requires clean shutdown
+- CI validates the checked-in Apache vhost with `apachectl configtest`
+- CI starts Apache and proves HTTPS health plus Bearer pass-through semantics to the Node boundary
 - GitHub Actions referenced by immutable 40-hex commit SHA
 
 Dependabot proposes npm and GitHub Actions updates; updates still pass the same architecture/type/test/security gates.
@@ -387,6 +392,16 @@ Runtime / HTTP:
 - built entrypoint health + graceful-shutdown smoke
 - mismatch fails closed
 
+Apache reverse proxy:
+
+- checked-in vhost passes `apachectl configtest`
+- `ProxyRequests Off`
+- loopback-only backend mapping
+- caller Authorization survives the reverse-proxy boundary
+- anonymous `/v1/*` remains 401
+- authenticated unknown `/v1/*` reaches Node and returns 404
+- fixed-host HTTPS redirect and request-size/header limits remain in the checked-in contract
+
 Database contract:
 
 - every migration is executable in order
@@ -406,7 +421,8 @@ Architecture checker:
 - idempotent create/update SQL invariants
 - explicit document writer guards
 - executable database workflow + acceptance fixture presence/invariants
-- Nginx loopback/Authorization/body/timeout boundary
+- Apache loopback/Authorization/body/header/timeout/forward-proxy boundary
+- Apache configtest + live proxy smoke presence
 - systemd hardening baseline
 - production build/start boundary
 - exact direct dependencies / lockfile / `npm ci`
@@ -416,13 +432,13 @@ Architecture checker:
 - npm-audit fallback rejection
 - CodeQL / OSV dependency vulnerability scan / CODEOWNERS presence and minimum invariants
 
-CI runs strict TypeScript typecheck, Vitest, production build/start smoke, architecture checks, executable database acceptance, CodeQL and the OSV dependency vulnerability scan.
+CI runs strict TypeScript typecheck, Vitest, production build/start smoke, Apache config/live-proxy validation, architecture checks, executable database acceptance, CodeQL and the OSV dependency vulnerability scan.
 
 ## Enterprise deployment boundary
 
 Repository-level engineering controls do not replace organization-level operations, compliance, backup, monitoring, incident response, real-Supabase acceptance, DNS/TLS/firewall administration, or branch administration.
 
-See [`ENTERPRISE_READINESS.md`](ENTERPRISE_READINESS.md), [`NGINX_DEPLOYMENT.md`](NGINX_DEPLOYMENT.md), [`REPOSITORY_GOVERNANCE.md`](REPOSITORY_GOVERNANCE.md), [`SECURITY_AUTOMATION.md`](SECURITY_AUTOMATION.md), and [`../SECURITY.md`](../SECURITY.md).
+See [`ENTERPRISE_READINESS.md`](ENTERPRISE_READINESS.md), [`APACHE_DEPLOYMENT.md`](APACHE_DEPLOYMENT.md), [`REPOSITORY_GOVERNANCE.md`](REPOSITORY_GOVERNANCE.md), [`SECURITY_AUTOMATION.md`](SECURITY_AUTOMATION.md), and [`../SECURITY.md`](../SECURITY.md).
 
 ## Growth stoppers
 
