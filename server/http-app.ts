@@ -37,6 +37,14 @@ function requestIdFrom(request: IncomingMessage): string {
   return randomUUID();
 }
 
+function requestPath(request: IncomingMessage): string {
+  try {
+    return new URL(request.url ?? '/', 'http://localhost').pathname;
+  } catch {
+    throw new HttpInputError(400, 'invalid_request');
+  }
+}
+
 function sendJson(response: ServerResponse, status: number, requestId: string, body: unknown): void {
   response.statusCode = status;
   response.setHeader('content-type', 'application/json; charset=utf-8');
@@ -59,6 +67,13 @@ function requireBearer(request: IncomingMessage): string {
   const match = /^Bearer\s+([^\s]+)$/i.exec(header);
   if (!match?.[1] || match[1].length > 8192) throw new HttpInputError(401, 'unauthenticated');
   return match[1];
+}
+
+function requireJsonContentType(request: IncomingMessage): void {
+  const contentType = request.headers['content-type'];
+  if (typeof contentType !== 'string' || !/^application\/json(?:\s*;|$)/i.test(contentType)) {
+    throw new HttpInputError(415, 'unsupported_media_type');
+  }
 }
 
 async function readJson(request: IncomingMessage, maxBytes: number): Promise<unknown> {
@@ -116,14 +131,17 @@ function requiredVersion(record: Readonly<Record<string, unknown>>): number {
 function putCommand(record: Readonly<Record<string, unknown>>): PutDocumentCommand {
   const kind = record.kind;
   if (kind !== 'create' && kind !== 'update') throw new HttpInputError(400, 'invalid_request');
+  const title = optionalString(record, 'title');
+  const content = optionalString(record, 'content');
+  const metadata = optionalMetadata(record);
   const base = {
     kind,
     id: requiredString(record, 'id'),
     vaultId: requiredString(record, 'vaultId'),
     path: requiredString(record, 'path'),
-    ...(optionalString(record, 'title') === undefined ? {} : { title: optionalString(record, 'title') }),
-    ...(optionalString(record, 'content') === undefined ? {} : { content: optionalString(record, 'content') }),
-    ...(optionalMetadata(record) === undefined ? {} : { metadata: optionalMetadata(record) }),
+    ...(title === undefined ? {} : { title }),
+    ...(content === undefined ? {} : { content }),
+    ...(metadata === undefined ? {} : { metadata }),
   };
   if (kind === 'create') return base as PutDocumentCommand;
   return { ...base, expectedVersion: requiredVersion(record) } as PutDocumentCommand;
@@ -172,9 +190,10 @@ export function createVaultHttpServer(config: VaultServerConfig, dependencies: H
     const startedAt = performance.now();
     const requestId = requestIdFrom(request);
     const method = request.method ?? 'UNKNOWN';
-    const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+    let path = '<invalid>';
 
     try {
+      path = requestPath(request);
       if (method === 'GET' && path === '/health/live') {
         sendJson(response, 200, requestId, { status: 'ok', requestId });
         return;
@@ -189,6 +208,7 @@ export function createVaultHttpServer(config: VaultServerConfig, dependencies: H
       }
 
       const accessToken = requireBearer(request);
+      requireJsonContentType(request);
       const body = objectBody(await readJson(request, config.maxBodyBytes));
       const rpcClient = createSupabaseHttpRpcClient({
         supabaseUrl: config.supabaseUrl,
