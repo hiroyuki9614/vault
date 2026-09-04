@@ -35,6 +35,12 @@ jobs:
       - name: Build production runtime
         run: npm run build
 
+      - name: Test release bundle and integrity contracts
+        run: python -m unittest tests/test_release_bundle.py tests/test_release_integrity_check.py
+
+      - name: Check release integrity contract
+        run: python tooling/release_integrity_check.py
+
       - name: Build deterministic release bundle twice
         run: |
           set -euo pipefail
