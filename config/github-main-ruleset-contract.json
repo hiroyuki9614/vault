@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "repository": "hiroyuki9614/vault",
+  "target_branch": "main",
+  "intended_enforcement": "active",
+  "require_pull_request": true,
+  "require_branch_up_to_date": true,
+  "block_force_pushes": true,
+  "block_branch_deletion": true,
+  "required_approvals_public_reference": 0,
+  "production_recommended_minimum_approvals": 1,
+  "code_owner_review_public_reference": false,
+  "production_recommended_code_owner_review": true,
+  "bypass_policy": "break_glass_administrators_only",
+  "required_status_checks": [
+    {
+      "workflow": "architecture",
+      "context": "check"
+    },
+    {
+      "workflow": "database-contract",
+      "context": "postgres-contract"
+    },
+    {
+      "workflow": "dependency-vulnerability-scan",
+      "context": "scan"
+    },
+    {
+      "workflow": "codeql",
+      "context": "CodeQL (javascript-typescript)"
+    },
+    {
+      "workflow": "codeql",
+      "context": "CodeQL (python)"
+    }
+  ],
+  "administrative_state_note": "This file declares intended repository governance. GitHub administrator settings remain the enforcement plane and must be verified separately."
+}
