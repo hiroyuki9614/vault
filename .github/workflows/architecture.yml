@@ -168,3 +168,9 @@ jobs:
 
       - name: Check GitHub governance contract
         run: python tooling/github_governance_check.py
+
+      - name: Test GitHub ruleset admin payload renderer
+        run: python -m unittest tests/test_github_ruleset_admin_helper.py
+
+      - name: Render GitHub ruleset admin payloads
+        run: python tooling/github_ruleset_admin_helper.py --output-dir /tmp/vault-ruleset-payloads
