@@ -23,6 +23,11 @@ function createMemoryStore(): DocumentStore {
       return null;
     },
 
+    async getById(vaultId, documentId) {
+      if (current?.vaultId === vaultId && current.id === documentId) return current;
+      return null;
+    },
+
     async put(request: PutDocumentRequest) {
       current = {
         id: request.documentId ?? DOCUMENT_ID,
@@ -44,7 +49,7 @@ function createMemoryStore(): DocumentStore {
 }
 
 describe('document service', () => {
-  it('returns the canonical read-back after put', async () => {
+  it('returns canonical same-id read-back after put', async () => {
     const service = createDocumentService(createMemoryStore());
 
     const result = await service.put({
@@ -57,9 +62,10 @@ describe('document service', () => {
 
     expect(result.id).toBe(DOCUMENT_ID);
     expect(result.version).toBe(1);
+    await expect(service.getById(VAULT_ID, DOCUMENT_ID)).resolves.toEqual(result);
   });
 
-  it('requires absence after delete', async () => {
+  it('requires identity absence after delete', async () => {
     const service = createDocumentService(createMemoryStore());
     await service.put({
       kind: 'create',
@@ -75,36 +81,46 @@ describe('document service', () => {
         expectedVersion: 1,
       }),
     ).resolves.toBeUndefined();
+    await expect(service.getById(VAULT_ID, DOCUMENT_ID)).resolves.toBeNull();
   });
 
-  it('fails closed when adapter result and read-back diverge', async () => {
+  it('fails closed when mutation result differs from the plan', async () => {
+    const base = createMemoryStore();
     const badStore: DocumentStore = {
-      async getByPath() {
-        return null;
-      },
+      ...base,
       async put(request) {
-        return {
-          id: DOCUMENT_ID,
-          vaultId: request.vaultId,
-          path: request.path,
-          title: request.title,
-          content: request.content,
-          metadata: request.metadata,
-          version: 1,
-        };
-      },
-      async delete(request) {
-        return request.documentId;
+        const snapshot = await base.put(request);
+        return { ...snapshot, version: snapshot.version + 1 };
       },
     };
 
     const service = createDocumentService(badStore);
-    await expect(
-      service.put({
-        kind: 'create',
-        vaultId: VAULT_ID,
-        path: 'notes/a.md',
-      }),
-    ).rejects.toBeInstanceOf(DocumentReadBackMismatchError);
+    const failure = service.put({
+      kind: 'create',
+      vaultId: VAULT_ID,
+      path: 'notes/a.md',
+    });
+
+    await expect(failure).rejects.toBeInstanceOf(DocumentReadBackMismatchError);
+    await expect(failure).rejects.toMatchObject({ stage: 'put_mutation' });
+  });
+
+  it('fails closed when same-id read-back diverges', async () => {
+    const base = createMemoryStore();
+    const badStore: DocumentStore = {
+      ...base,
+      async getById() {
+        return null;
+      },
+    };
+
+    const service = createDocumentService(badStore);
+    const failure = service.put({
+      kind: 'create',
+      vaultId: VAULT_ID,
+      path: 'notes/a.md',
+    });
+
+    await expect(failure).rejects.toMatchObject({ stage: 'put_read_back' });
   });
 });
