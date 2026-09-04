@@ -58,5 +58,4 @@ services:
 
 networks:
   edge:
-    internal: true
   egress:
