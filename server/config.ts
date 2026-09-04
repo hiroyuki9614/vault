@@ -73,7 +73,7 @@ export function parseRuntimeConfig(
   if (!LOOPBACK_HOSTS.has(host) && !allowPublicBind) {
     throw new RuntimeConfigError(
       'VAULT_HOST',
-      'non-loopback bind requires VAULT_ALLOW_PUBLIC_BIND=true; Nginx deployments should bind loopback only',
+      'non-loopback bind requires VAULT_ALLOW_PUBLIC_BIND=true; host reverse-proxy deployments should bind loopback only',
     );
   }
 

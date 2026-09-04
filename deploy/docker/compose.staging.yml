@@ -1,0 +1,61 @@
+name: public-vault-staging
+
+services:
+  vault-node:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.runtime
+    environment:
+      NODE_OPTIONS: --max-old-space-size=128
+      SUPABASE_URL: ${SUPABASE_URL:?SUPABASE_URL is required}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?SUPABASE_ANON_KEY is required}
+      VAULT_HOST: 0.0.0.0
+      VAULT_ALLOW_PUBLIC_BIND: "true"
+      VAULT_PORT: "3100"
+    expose:
+      - "3100"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 192m
+    pids_limit: 128
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3100/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 5s
+      timeout: 2s
+      retries: 12
+      start_period: 5s
+    networks:
+      - edge
+      - egress
+
+  apache:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.apache
+    depends_on:
+      vault-node:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${VAULT_STAGING_PORT:-18080}:8080"
+    read_only: true
+    tmpfs:
+      - /usr/local/apache2/logs:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 96m
+    pids_limit: 128
+    restart: unless-stopped
+    networks:
+      - edge
+
+networks:
+  edge:
+  egress:
