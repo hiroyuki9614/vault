@@ -103,14 +103,32 @@ class ArchitectureCheckTest(unittest.TestCase):
         workflow.write_text(workflow.read_text(encoding="utf-8").replace("javascript-typescript", "removed-language"), encoding="utf-8")
         self.assertTrue(any("CodeQL workflow missing invariant" in error for error in check(repo)))
 
-    def test_dependency_audit_severity_invariant_fails(self):
+    def test_dependency_scan_requires_exact_osv_pin(self):
         repo = self.copy_repo()
-        workflow = repo / ".github" / "workflows" / "dependency-audit.yml"
+        workflow = repo / ".github" / "workflows" / "dependency-vulnerability-scan.yml"
         workflow.write_text(
-            workflow.read_text(encoding="utf-8").replace("npm audit --audit-level=high", "npm audit --audit-level=critical"),
+            workflow.read_text(encoding="utf-8").replace(
+                "google/osv-scanner-action/osv-scanner-action@baa4139e56d6312335d899e6ba045fa16d1d3d0b",
+                "google/osv-scanner-action/osv-scanner-action@1111111111111111111111111111111111111111",
+            ),
             encoding="utf-8",
         )
-        self.assertTrue(any("dependency audit must reject" in error for error in check(repo)))
+        self.assertTrue(any("pinned OSV scanner action" in error for error in check(repo)))
+
+    def test_dependency_scan_requires_package_lock(self):
+        repo = self.copy_repo()
+        workflow = repo / ".github" / "workflows" / "dependency-vulnerability-scan.yml"
+        workflow.write_text(
+            workflow.read_text(encoding="utf-8").replace("--lockfile=package-lock.json", "--recursive"),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("committed npm lockfile" in error for error in check(repo)))
+
+    def test_dependency_scan_rejects_npm_audit_fallback(self):
+        repo = self.copy_repo()
+        workflow = repo / ".github" / "workflows" / "dependency-vulnerability-scan.yml"
+        workflow.write_text(workflow.read_text(encoding="utf-8") + "\n# npm audit\n", encoding="utf-8")
+        self.assertTrue(any("must not depend on npm audit" in error for error in check(repo)))
 
     def test_provider_leak_in_public_api_fails(self):
         repo = self.copy_repo()
