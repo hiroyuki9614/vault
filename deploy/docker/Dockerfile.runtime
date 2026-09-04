@@ -1,0 +1,23 @@
+FROM node:24.20.0-alpine3.24 AS build
+
+WORKDIR /src
+
+COPY package.json package-lock.json tsconfig.json tsconfig.build.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY core ./core
+COPY documents ./documents
+COPY server ./server
+RUN npm run build
+
+FROM node:24.20.0-alpine3.24 AS runtime
+
+ENV NODE_ENV=production
+WORKDIR /app
+
+COPY --from=build --chown=node:node /src/dist ./dist
+
+USER node
+EXPOSE 3100
+
+CMD ["node", "dist/server/main.js"]
