@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "config" / "architecture.json"
+ACTION_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def load_config() -> dict:
@@ -31,8 +33,16 @@ def check(root: Path = ROOT) -> list[str]:
         errors.append("lockfile_required must be true")
     if config.get("identity_read_back_required") is not True:
         errors.append("identity_read_back_required must be true")
+    if config.get("idempotent_create_required") is not True:
+        errors.append("idempotent_create_required must be true")
     if config.get("semantic_store_errors_required") is not True:
         errors.append("semantic_store_errors_required must be true")
+    if config.get("pinned_workflow_actions_required") is not True:
+        errors.append("pinned_workflow_actions_required must be true")
+    if config.get("code_scanning_workflow_required") is not True:
+        errors.append("code_scanning_workflow_required must be true")
+    if config.get("dependency_review_workflow_required") is not True:
+        errors.append("dependency_review_workflow_required must be true")
 
     for path in config.get("required_paths", []):
         if not (root / path).exists():
@@ -52,15 +62,50 @@ def check(root: Path = ROOT) -> list[str]:
             if not isinstance(version, str) or version.startswith(("^", "~", ">", "<", "*")):
                 errors.append(f"devDependency must be exact: {name}={version}")
 
-    workflow = root / ".github" / "workflows" / "architecture.yml"
-    if workflow.exists():
-        workflow_text = workflow.read_text(encoding="utf-8")
+    workflows_root = root / ".github" / "workflows"
+    if workflows_root.exists():
+        for workflow_path in sorted(workflows_root.glob("*.yml")):
+            workflow_text = workflow_path.read_text(encoding="utf-8")
+            if "timeout-minutes:" not in workflow_text:
+                errors.append(f"workflow must bound execution time: {workflow_path.name}")
+            for line_number, line in enumerate(workflow_text.splitlines(), start=1):
+                stripped = line.strip()
+                if not stripped.startswith("uses:"):
+                    continue
+                target = stripped.removeprefix("uses:").strip().split("#", 1)[0].strip()
+                if target.startswith("./"):
+                    continue
+                if "@" not in target:
+                    errors.append(
+                        f"workflow action must be SHA pinned: {workflow_path.name}:{line_number}"
+                    )
+                    continue
+                _, ref = target.rsplit("@", 1)
+                if not ACTION_SHA_RE.fullmatch(ref):
+                    errors.append(
+                        f"workflow action must use a 40-hex commit: {workflow_path.name}:{line_number}"
+                    )
+
+    architecture_workflow = workflows_root / "architecture.yml"
+    if architecture_workflow.exists():
+        workflow_text = architecture_workflow.read_text(encoding="utf-8")
         if "npm ci" not in workflow_text:
             errors.append("architecture workflow must use npm ci")
         if "npm install" in workflow_text:
             errors.append("architecture workflow must not use npm install")
-        if "timeout-minutes:" not in workflow_text:
-            errors.append("architecture workflow must bound execution time")
+
+    codeql_workflow = workflows_root / "codeql.yml"
+    if codeql_workflow.exists():
+        text = codeql_workflow.read_text(encoding="utf-8")
+        for fragment in ("javascript-typescript", "python", "security-extended", "security-events: write"):
+            if fragment not in text:
+                errors.append(f"CodeQL workflow missing invariant: {fragment}")
+
+    dependency_review_workflow = workflows_root / "dependency-review.yml"
+    if dependency_review_workflow.exists():
+        text = dependency_review_workflow.read_text(encoding="utf-8")
+        if "fail-on-severity: high" not in text:
+            errors.append("dependency review must fail on high severity or above")
 
     core_root = root / "documents" / "machine" / "core"
     if core_root.exists():
@@ -75,6 +120,14 @@ def check(root: Path = ROOT) -> list[str]:
                         f"functional core contains effect/provider fragment in {path.relative_to(root)}: {fragment}"
                     )
 
+    contracts = root / "documents" / "machine" / "contracts" / "document.ts"
+    if contracts.exists():
+        contract_text = contracts.read_text(encoding="utf-8")
+        if "readonly documentId: string;" not in contract_text:
+            errors.append("document create/update request identity must be a required string")
+        if "readonly documentId: string | null;" in contract_text:
+            errors.append("document request must not allow null identity")
+
     migrations_root = root / "supabase" / "migrations"
     migration_files = sorted(migrations_root.glob("*.sql")) if migrations_root.exists() else []
     all_sql = "\n".join(path.read_text(encoding="utf-8").lower() for path in migration_files)
@@ -83,9 +136,10 @@ def check(root: Path = ROOT) -> list[str]:
         "auth.uid()",
         "security invoker",
         "version_conflict",
+        *config.get("required_sql_fragments", []),
     ]
     for fragment in required_fragments:
-        if fragment not in all_sql:
+        if fragment.lower() not in all_sql:
             errors.append(f"migrations missing invariant: {fragment}")
     for rpc in config.get("required_rpc_names", []):
         if f"create or replace function public.{rpc}" not in all_sql:
@@ -97,8 +151,9 @@ def check(root: Path = ROOT) -> list[str]:
         for rpc in config.get("required_rpc_names", []):
             if f"'{rpc}'" not in adapter_text and f'"{rpc}"' not in adapter_text:
                 errors.append(f"Supabase adapter missing semantic RPC mapping: {rpc}")
-        if "DocumentStoreError" not in adapter_text:
-            errors.append("Supabase adapter must normalize provider failures to DocumentStoreError")
+        for semantic_error in ("DocumentStoreError", "idempotency_conflict", "path_conflict"):
+            if semantic_error not in adapter_text:
+                errors.append(f"Supabase adapter missing semantic failure mapping: {semantic_error}")
 
     service = root / "documents" / "machine" / "runtime" / "document-service.ts"
     if service.exists():
@@ -109,6 +164,13 @@ def check(root: Path = ROOT) -> list[str]:
     public_api = root / "documents" / "public.ts"
     if public_api.exists() and "supabase" in public_api.read_text(encoding="utf-8").lower():
         errors.append("documents public API must remain provider-free")
+
+    codeowners = root / ".github" / "CODEOWNERS"
+    if codeowners.exists():
+        codeowners_text = codeowners.read_text(encoding="utf-8")
+        for path in ("/supabase/migrations/", "/documents/machine/core/", "/.github/"):
+            if path not in codeowners_text:
+                errors.append(f"CODEOWNERS missing security-critical path: {path}")
 
     forbidden_text = [
         "kind: personal",
@@ -134,7 +196,7 @@ def main() -> int:
         for error in errors:
             print(f"FAIL: {error}")
         return 1
-    print("PASS: public vault meets the enterprise TypeScript functional-core baseline")
+    print("PASS: public vault meets the enterprise resilience and security baseline")
     return 0
 
 
