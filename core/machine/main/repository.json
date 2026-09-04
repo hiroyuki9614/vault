@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "repository": "hiroyuki9614/vault",
+  "generation": "public-vault-reference",
+  "visibility_expected": "public",
+  "role": "public_reference_runtime_and_contracts",
+  "bootstrap": [
+    "core/machine/main/repository.json",
+    "core/machine/indexes/responsibilities.json",
+    "task_owner_contract"
+  ],
+  "execution_kernel": [
+    "bootstrap_minimum",
+    "resolve_responsibility",
+    "load_task_relevant_contracts",
+    "work",
+    "verify_applicable_contracts",
+    "read_back_state_changes",
+    "stop_when_acceptance_is_satisfied"
+  ],
+  "runtime": {
+    "language": "typescript",
+    "module_system": "esm",
+    "architecture": "functional_core_effectful_adapter",
+    "provider_types_in_core": false
+  },
+  "database": {
+    "canonical_backend": "supabase_postgresql",
+    "supabase_required": true,
+    "github_data_canonical": false,
+    "schema_canonical": "versioned_git_migrations",
+    "semantic_rpc_boundary": true
+  },
+  "secrets": {
+    "repository_storage_allowed": false,
+    "runtime_injection_required": true
+  },
+  "growth_stoppers": [
+    "universal_execution_runner",
+    "universal_work_context",
+    "moving_main_stack",
+    "mandatory_review_stack",
+    "github_data_fallback"
+  ]
+}

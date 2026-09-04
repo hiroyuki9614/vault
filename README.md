@@ -1,106 +1,168 @@
 # Vault
 
-Supabase を正本にする、公開用 Vault Reference Implementation です。
+Supabase を canonical data store にし、TypeScript の Functional Core / Effectful Adapter で構成する公開用 Vault Reference Implementation です。
 
-この repository 自体には個人データ・業務データを保存しません。GitHub は設計、SQL migration、Agent contract、template、architecture check の配布面です。実データの canonical storage は Supabase PostgreSQL です。
+この repository 自体には個人データ・業務データを保存しません。GitHub は TypeScript runtime source、設計contract、SQL migration、Agent Skill、architecture check の配布面です。mutable data の canonical storage は Supabase PostgreSQL です。
 
-## Architecture
+## Runtime architecture
+
+Public Vault の実装本体は TypeScript です。
 
 ```text
 Client / AI Agent
       |
       v
- semantic operation
+Document public contract
       |
       v
-Supabase Auth + RLS
+pure TypeScript core
+  validate / decide / plan
       |
       v
-public.get_document / put_document / delete_document
+semantic DocumentStore port
       |
       v
-public.documents  <- canonical data
+Supabase RPC adapter
+      |
+      v
+Supabase Auth + RLS + PostgreSQL
+      |
+      v
+canonical Vault data
 ```
 
-原則:
+v3 と同じ responsibility-first の分割を使います。
 
-- Supabase は必須依存です。利用不能時に GitHub Markdown を第二正本として書き始めません。
-- GitHub repository に実ユーザーの document body、credential、token、個人情報を保存しません。
-- document identity は UUID で固定し、path rename で identity を変えません。
-- write は optimistic version check を行い、成功後に同じ document identity を read-back します。
-- Agent / client の通常 read/write は semantic RPC を使用します。table schema を public contract にしません。
-- migration / policy / architecture を増やす前に、既存境界で解決できるか確認します。
+```text
+core/machine/
+  main/repository.json
+  indexes/responsibilities.json
+
+documents/machine/
+  contracts/   # provider-free public contract
+  core/        # pure TypeScript policy
+  ports/       # semantic effect boundary
+  adapters/    # Supabase RPC mapping
+  runtime/     # composition + read-back
+```
+
+### Functional rules
+
+- `documents/machine/core` は pure function を基本とし、Supabase / env / filesystem / network を直接参照しません。
+- provider 固有の row shape / error / RPC parameter は adapter が吸収します。
+- core は immutable input から validation / decision / effect plan を返します。
+- mutation は optimistic version check を使い、adapter 実行後に same-subject read-back を行います。
+- Supabase unavailable 時に GitHub Markdown へ write fallback しません。
+
+## Documents capability
+
+現在の最初の executable Capability は `documents` です。
+
+- [`documents/machine/contracts/document.ts`](documents/machine/contracts/document.ts) — provider-free command / snapshot contract
+- [`documents/machine/core/document-policy.ts`](documents/machine/core/document-policy.ts) — create/update/delete plan と read-back判定
+- [`documents/machine/ports/document-store.ts`](documents/machine/ports/document-store.ts) — semantic persistence Port
+- [`documents/machine/adapters/supabase-rpc-document-store.ts`](documents/machine/adapters/supabase-rpc-document-store.ts) — `get_document / put_document / delete_document` RPC adapter
+- [`documents/machine/runtime/document-service.ts`](documents/machine/runtime/document-service.ts) — effect composition と read-back enforcement
+
+Supabase の physical table shape は public TypeScript contract にしません。
+
+## Canonical boundaries
+
+- mutable Vault data: Supabase PostgreSQL
+- schema / RLS / RPC: Git migration history
+- executable domain policy: TypeScript `*/machine/core`
+- public capability contract: TypeScript `*/machine/contracts`
+- architecture / Agent contract: Git Markdown / JSON
+- credentials: deployment secret store
+
+Document identity は UUID で固定し、`path` rename で identity を変えません。
 
 ## Public design contracts
 
-このReference Implementationで再利用できる設計契約:
-
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Supabase-first Vault全体のcanonical / data boundary
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — runtime / canonical / data boundary
 - [`docs/RESPONSIBILITY_BOUNDARIES.md`](docs/RESPONSIBILITY_BOUNDARIES.md) — Responsibility / Capability / Port / dependency boundary
-- [`docs/FUNCTIONAL_CORE_EFFECTFUL_ADAPTER.md`](docs/FUNCTIONAL_CORE_EFFECTFUL_ADAPTER.md) — pure decision logicと外部I/Oの分離
-- [`docs/SKILL_DISTILLATION.md`](docs/SKILL_DISTILLATION.md) — Agent Skillをtype / trait /固有semanticへ蒸留するcontract
+- [`docs/FUNCTIONAL_CORE_EFFECTFUL_ADAPTER.md`](docs/FUNCTIONAL_CORE_EFFECTFUL_ADAPTER.md) — pure decision logic と external I/O の分離
+- [`docs/SKILL_DISTILLATION.md`](docs/SKILL_DISTILLATION.md) — Agent Skill を type / trait / 固有semanticへ蒸留するcontract
 
 ## Public Agent Skills
 
-AI開発で再利用できるSkillです。入口は [`.agents/SKILLS_INDEX.md`](.agents/SKILLS_INDEX.md) です。
+入口は [`.agents/SKILLS_INDEX.md`](.agents/SKILLS_INDEX.md) です。必要な Skill だけを読みます。
 
 ### Project lifecycle
 
-- [`project-initialization`](.agents/skills/project-initialization/SKILL.md) — greenfield / major foundationの最小boundaryとreadinessを決める
-- [`requirements-interview`](.agents/skills/requirements-interview/SKILL.md) — material unknownだけを必要最小限の質問で解消する
-- [`change-impact-analysis`](.agents/skills/change-impact-analysis/SKILL.md) — 実ファイルから処理経路を追い変更対象と確認対象を分ける
-- [`technical-design-document`](.agents/skills/technical-design-document/SKILL.md) — durable decisionのartifact ownerを選び重複canonicalを防ぐ
-- [`deployment-diagnosis`](.agents/skills/deployment-diagnosis/SKILL.md) — deploy障害のlast success / first failure boundaryを特定する
+- [`project-initialization`](.agents/skills/project-initialization/SKILL.md)
+- [`requirements-interview`](.agents/skills/requirements-interview/SKILL.md)
+- [`change-impact-analysis`](.agents/skills/change-impact-analysis/SKILL.md)
+- [`technical-design-document`](.agents/skills/technical-design-document/SKILL.md)
+- [`deployment-diagnosis`](.agents/skills/deployment-diagnosis/SKILL.md)
 
 ### Development flow
 
-- [`requirements-guard`](.agents/skills/requirements-guard/SKILL.md) — current requirement / canonical / implementation / testsの整合
-- [`test-driven-development`](.agents/skills/test-driven-development/SKILL.md) — valid Red → minimal Green → Refactor → fresh verification
-- [`qa-quality-assurance`](.agents/skills/qa-quality-assurance/SKILL.md) — user/business riskからtest conditionと優先度を設計
-- [`secure-coding-guard`](.agents/skills/secure-coding-guard/SKILL.md) — tool-based checksとsemantic security reviewを組み合わせる
-- [`git-safe-operations`](.agents/skills/git-safe-operations/SKILL.md) — unrelated changesを保持してtargeted write/read-backする
+- [`requirements-guard`](.agents/skills/requirements-guard/SKILL.md)
+- [`test-driven-development`](.agents/skills/test-driven-development/SKILL.md)
+- [`qa-quality-assurance`](.agents/skills/qa-quality-assurance/SKILL.md)
+- [`secure-coding-guard`](.agents/skills/secure-coding-guard/SKILL.md)
+- [`git-safe-operations`](.agents/skills/git-safe-operations/SKILL.md)
 
 ### Architecture boundary
 
-- [`dependency-boundary`](.agents/skills/dependency-boundary/SKILL.md) — semantic ownership、public/private境界、dependency directionを分類
-- [`functional-decomposition`](.agents/skills/functional-decomposition/SKILL.md) — meaningful decisionとexternal effectを分離すべきか判定
-- [`configuration-boundary`](.agents/skills/configuration-boundary/SKILL.md) — domain/config/provider/secret/derived valueのownershipを8分類
-
-Skillは必要なtaskでだけ読み、Skill利用自体を目的にしません。
+- [`dependency-boundary`](.agents/skills/dependency-boundary/SKILL.md)
+- [`functional-decomposition`](.agents/skills/functional-decomposition/SKILL.md)
+- [`configuration-boundary`](.agents/skills/configuration-boundary/SKILL.md)
 
 ## Quick start
 
-1. Supabase project を作成します。
-2. Supabase CLI で project を link します。
-3. `supabase/migrations/` を適用します。
-4. client には `SUPABASE_URL` と publishable/anon key を設定します。
-5. user を Supabase Auth で認証し、最初の `vaults` row を作成します。
-6. document 操作は `get_document`, `put_document`, `delete_document` RPC を使用します。
+```bash
+npm install
+npm run check:ts
+```
 
-詳細は `docs/ARCHITECTURE.md` と `supabase/README.md` を参照してください。
+Supabase側は:
+
+1. Supabase project を作成
+2. Supabase CLI で project を link
+3. `supabase/migrations/` を適用
+4. application側で `SUPABASE_URL` と publishable/anon key を注入
+5. Supabase Auth で認証
+6. TypeScript runtime から Supabase RPC adapter を composition
+
+## Validation
+
+全体:
+
+```bash
+npm run check
+```
+
+TypeScriptのみ:
+
+```bash
+npm run typecheck
+npm run test:ts
+```
+
+Architecture boundaryのみ:
+
+```bash
+python -m unittest tests/test_architecture_check.py
+python tooling/architecture_check.py
+```
 
 ## Repository scope
 
 含むもの:
 
-- Supabase schema / RLS / RPC migrations
-- public architecture contract
+- TypeScript Functional Core / Port / Adapter reference runtime
+- Supabase schema / RLS / semantic RPC migrations
+- public architecture contracts
 - reusable public Agent Skills
-- AI Agent rules
-- synthetic templates / examples
-- architecture regression check
+- architecture regression checks
 
 含まないもの:
 
 - 個人 Vault の実データ
 - shared/private Vault の mirror
 - credential / secret
+- GitHub data fallback
 - VPS / scheduler / notification runtime
 - generic Control Plane / Work Context / recovery machinery
-
-## Validation
-
-```bash
-python -m unittest tests/test_architecture_check.py
-python tooling/architecture_check.py
-```

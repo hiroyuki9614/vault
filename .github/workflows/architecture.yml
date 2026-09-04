@@ -13,10 +13,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package.json
+
+      - name: Install TypeScript test dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck functional core
+        run: npm run typecheck
+
+      - name: Test TypeScript runtime
+        run: npm run test:ts
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
       - name: Test architecture checker
         run: python -m unittest tests/test_architecture_check.py
+
       - name: Check architecture
         run: python tooling/architecture_check.py
