@@ -1,6 +1,6 @@
--- Make create retry-safe without introducing a generic idempotency subsystem.
--- A caller supplies the stable document UUID. Repeating the same create returns
--- the same row only when the requested state is identical.
+-- Make document puts retry-safe without a generic idempotency subsystem.
+-- Caller supplies a stable document UUID. Exact replay of create/update returns
+-- the already-committed row; conflicting intent fails closed.
 
 create or replace function public.put_document(
   p_vault_id uuid,
@@ -55,8 +55,7 @@ begin
       returning * into v_row;
     exception
       when unique_violation then
-        select d.*
-        into v_existing
+        select d.* into v_existing
         from public.documents d
         where d.vault_id = p_vault_id
           and d.id = p_document_id;
@@ -72,10 +71,8 @@ begin
             raise exception 'idempotency_conflict';
           end if;
         elsif exists (
-          select 1
-          from public.documents d
-          where d.vault_id = p_vault_id
-            and d.path = p_path
+          select 1 from public.documents d
+          where d.vault_id = p_vault_id and d.path = p_path
         ) then
           raise exception 'path_conflict';
         else
@@ -83,29 +80,43 @@ begin
         end if;
     end;
   else
-    update public.documents d
-    set path = p_path,
-        title = coalesce(p_title, ''),
-        content = coalesce(p_content, ''),
-        metadata = coalesce(p_metadata, '{}'::jsonb),
-        version = d.version + 1,
-        updated_by = auth.uid(),
-        updated_at = now()
-    where d.id = p_document_id
-      and d.vault_id = p_vault_id
-      and d.version = p_expected_version
-    returning d.* into v_row;
+    begin
+      update public.documents d
+      set path = p_path,
+          title = coalesce(p_title, ''),
+          content = coalesce(p_content, ''),
+          metadata = coalesce(p_metadata, '{}'::jsonb),
+          version = d.version + 1,
+          updated_by = auth.uid(),
+          updated_at = now()
+      where d.id = p_document_id
+        and d.vault_id = p_vault_id
+        and d.version = p_expected_version
+      returning d.* into v_row;
+    exception
+      when unique_violation then
+        raise exception 'path_conflict';
+    end;
 
     if not found then
-      if exists (
-        select 1
-        from public.documents d
-        where d.id = p_document_id
-          and d.vault_id = p_vault_id
-      ) then
-        raise exception 'version_conflict';
+      select d.* into v_existing
+      from public.documents d
+      where d.id = p_document_id
+        and d.vault_id = p_vault_id;
+
+      if found then
+        if v_existing.version = p_expected_version + 1
+           and v_existing.path = p_path
+           and v_existing.title = coalesce(p_title, '')
+           and v_existing.content = coalesce(p_content, '')
+           and v_existing.metadata = coalesce(p_metadata, '{}'::jsonb) then
+          v_row := v_existing;
+        else
+          raise exception 'version_conflict';
+        end if;
+      else
+        raise exception 'document_not_found';
       end if;
-      raise exception 'document_not_found';
     end if;
   end if;
 
