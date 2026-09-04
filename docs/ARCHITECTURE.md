@@ -28,6 +28,29 @@ Supabase Auth + RLS + PostgreSQL
 canonical mutable data
 ```
 
+For an HTTP deployment, Nginx and the Node HTTP process are additional effectful boundaries around the same Capability:
+
+```text
+HTTPS client
+  |
+  v
+Nginx :443
+  |
+  v
+127.0.0.1:3100 Node.js HTTP adapter
+  |
+  v
+DocumentService
+  |
+  v
+bearer-scoped Supabase REST/RPC
+  |
+  v
+Supabase Auth + RLS + PostgreSQL
+```
+
+The functional core does not know about Nginx, sockets, environment variables, process signals, HTTP headers, or Supabase transport details.
+
 ## Repository machine bootstrap
 
 ```text
@@ -165,6 +188,47 @@ DeleteDocumentCommand
 
 `path` remains a locator. It is not identity evidence.
 
+## Nginx production boundary
+
+The public HTTP deployment surface is intentionally narrow:
+
+```text
+GET  /health/live
+GET  /health/ready
+POST /v1/documents/get-by-path
+POST /v1/documents/get-by-id
+POST /v1/documents/put
+POST /v1/documents/delete
+```
+
+The HTTP adapter is not a generic Supabase RPC proxy.
+
+Nginx owns:
+
+- public TLS listener;
+- request-size boundary;
+- reverse-proxy connect/send/read timeouts;
+- trusted request-id and forwarding headers;
+- explicit Authorization forwarding;
+- rejection of unrelated paths.
+
+The Node process owns:
+
+- loopback-only bind by default;
+- runtime configuration validation;
+- bearer-header validation;
+- JSON/body-size validation;
+- semantic HTTP error mapping;
+- upstream Supabase timeout;
+- structured request logs without token/key/body content;
+- SIGTERM/SIGINT graceful shutdown.
+
+Normal application traffic uses the caller's Supabase access token plus the configured publishable/anon key. A Supabase service-role credential is not part of the normal Node runtime contract.
+
+`/health/ready` proves that configuration was accepted and the Node process is serving requests. It deliberately does not perform a database query on every probe. Supabase availability is surfaced through bounded operation-level failures.
+
+The reference deployment is documented in [`NGINX_DEPLOYMENT.md`](NGINX_DEPLOYMENT.md).
+
 ## Canonical ownership
 
 ```text
@@ -179,6 +243,9 @@ Public capability API
 
 Provider-free detailed contracts
   -> TypeScript */machine/contracts and */machine/ports
+
+HTTP / Nginx / process lifecycle
+  -> effectful deployment boundary
 
 Schema / RLS / RPC definition
   -> versioned Git migration history
@@ -226,6 +293,8 @@ unknown
 
 Provider-specific error objects/messages do not cross the Port boundary. `unavailable` denotes a transport/infrastructure condition that may be retried after applying operation-specific reconciliation.
 
+The HTTP adapter maps these semantic failures to bounded HTTP status codes and never returns the raw Supabase/PostgreSQL provider message as the application contract.
+
 ## Security
 
 Supabase Auth + RLS are mandatory.
@@ -244,7 +313,7 @@ Repository security automation includes:
 - source-enforced OSV-Scanner scan of committed `package-lock.json`
 - dependency scan failure on any known vulnerability reported by OSV
 - Dependabot updates
-- CODEOWNERS declarations for security-critical boundaries
+- CODEOWNERS declarations for security-critical boundaries, including `server/` and `deploy/`
 
 The dependency gate does not depend on the npm Advisory API. GitHub Dependency Review is an optional graph-backed enhancement that requires Dependency Graph to be enabled in repository administration. GitHub-side rulesets and security-analysis settings remain administrator-managed state; they are not simulated by runtime code.
 
@@ -253,6 +322,7 @@ The dependency gate does not depend on the npm Advisory API. GitHub Dependency R
 ```text
 Supabase unavailable
   -> semantic unavailable failure
+  -> HTTP 503 at the Nginx/Node surface
   -> no GitHub fallback write
   -> no local second canonical
 ```
@@ -268,6 +338,8 @@ The runtime toolchain is pinned at repository level:
 - exact direct dev dependency versions
 - committed `package-lock.json`
 - CI installs with `npm ci`
+- production emit via `tsconfig.build.json`
+- CI starts the emitted `dist/server/main.js`, verifies loopback health, sends SIGTERM, and requires clean shutdown
 - GitHub Actions referenced by immutable 40-hex commit SHA
 
 Dependabot proposes npm and GitHub Actions updates; updates still pass the same architecture/type/test/security gates.
@@ -302,12 +374,17 @@ Adapter:
 
 - RPC name/parameter mapping
 - provider response validation
-- provider-to-semantic error mapping
+- provider-to-semantic error mapping, including database `permission_denied`
 
-Runtime:
+Runtime / HTTP:
 
 - mutation result verification
 - same-ID read-back
+- loopback-default configuration
+- bearer propagation to named Supabase RPC
+- body/content-type/auth boundaries
+- production TypeScript emit
+- built entrypoint health + graceful-shutdown smoke
 - mismatch fails closed
 
 Database contract:
@@ -329,6 +406,9 @@ Architecture checker:
 - idempotent create/update SQL invariants
 - explicit document writer guards
 - executable database workflow + acceptance fixture presence/invariants
+- Nginx loopback/Authorization/body/timeout boundary
+- systemd hardening baseline
+- production build/start boundary
 - exact direct dependencies / lockfile / `npm ci`
 - immutable workflow action pins
 - exact OSV scanner action pin
@@ -336,13 +416,13 @@ Architecture checker:
 - npm-audit fallback rejection
 - CodeQL / OSV dependency vulnerability scan / CODEOWNERS presence and minimum invariants
 
-CI runs strict TypeScript typecheck, Vitest, architecture checks, executable database acceptance, CodeQL and the OSV dependency vulnerability scan.
+CI runs strict TypeScript typecheck, Vitest, production build/start smoke, architecture checks, executable database acceptance, CodeQL and the OSV dependency vulnerability scan.
 
 ## Enterprise deployment boundary
 
-Repository-level engineering controls do not replace organization-level operations, compliance, backup, monitoring, incident response, real-Supabase acceptance, or branch administration.
+Repository-level engineering controls do not replace organization-level operations, compliance, backup, monitoring, incident response, real-Supabase acceptance, DNS/TLS/firewall administration, or branch administration.
 
-See [`ENTERPRISE_READINESS.md`](ENTERPRISE_READINESS.md), [`REPOSITORY_GOVERNANCE.md`](REPOSITORY_GOVERNANCE.md), [`SECURITY_AUTOMATION.md`](SECURITY_AUTOMATION.md), and [`../SECURITY.md`](../SECURITY.md).
+See [`ENTERPRISE_READINESS.md`](ENTERPRISE_READINESS.md), [`NGINX_DEPLOYMENT.md`](NGINX_DEPLOYMENT.md), [`REPOSITORY_GOVERNANCE.md`](REPOSITORY_GOVERNANCE.md), [`SECURITY_AUTOMATION.md`](SECURITY_AUTOMATION.md), and [`../SECURITY.md`](../SECURITY.md).
 
 ## Growth stoppers
 
