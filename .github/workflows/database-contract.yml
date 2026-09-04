@@ -1,0 +1,43 @@
+name: database-contract
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-contract-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Start runner PostgreSQL
+        run: |
+          sudo systemctl start postgresql.service
+          sudo -u postgres dropdb --if-exists vault_ci
+          sudo -u postgres createdb vault_ci
+
+      - name: Bootstrap synthetic Supabase Auth compatibility
+        run: sudo -u postgres psql -d vault_ci -v ON_ERROR_STOP=1 -f tests/postgres/supabase-auth-bootstrap.sql
+
+      - name: Apply all migrations in order
+        run: |
+          set -euo pipefail
+          for migration in supabase/migrations/*.sql; do
+            echo "Applying ${migration}"
+            sudo -u postgres psql -d vault_ci -v ON_ERROR_STOP=1 -f "${migration}"
+          done
+
+      - name: Verify document RPC and RLS acceptance contract
+        run: sudo -u postgres psql -d vault_ci -v ON_ERROR_STOP=1 -f tests/postgres/document-rls-acceptance.sql
