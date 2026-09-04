@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "responsibilities": {
     "core": {
       "status": "active",
@@ -8,7 +8,9 @@
         "architecture_contract",
         "responsibility_registry",
         "permission_and_secret_boundary",
-        "architecture_verification_boundary"
+        "architecture_verification_boundary",
+        "runtime_toolchain_contract",
+        "dependency_reproducibility"
       ],
       "must_not_own": [
         "document_business_logic",
@@ -18,15 +20,18 @@
       ]
     },
     "documents": {
-      "status": "active",
+      "status": "active_enterprise_baseline",
       "owns": [
         "document_identity_semantics",
         "document_write_validation",
         "document_optimistic_concurrency_contract",
-        "document_read_back_verification",
-        "document_persistence_port"
+        "document_same_identity_read_back_verification",
+        "document_persistence_port",
+        "document_semantic_store_error_contract",
+        "provider_free_public_api"
       ],
       "public_contracts": [
+        "documents/public.ts",
         "documents/machine/contracts/document.ts"
       ],
       "implementation": {
@@ -38,6 +43,7 @@
       "must_not_own": [
         "supabase_project_identity",
         "supabase_credentials",
+        "provider_error_objects_as_public_contract",
         "physical_table_shape_as_public_contract",
         "github_fallback_storage"
       ]
@@ -61,6 +67,7 @@
     "foreign_internal_access": "forbidden",
     "public_contract_only_across_responsibilities": true,
     "provider_types_in_core_or_public_contract": "forbidden",
+    "provider_error_objects_in_public_contract": "forbidden",
     "dependency_cycles": "forbidden"
   },
   "top_level_is_not_fixed_capability_count": true
