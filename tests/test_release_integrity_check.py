@@ -56,6 +56,19 @@ class ReleaseIntegrityCheckTest(unittest.TestCase):
         )
         self.assertTrue(any("refs/tags/v" in error for error in check(repo)))
 
+    def test_tagged_commit_must_be_integrated_into_main(self):
+        repo = self.copy_repo()
+        workflow = repo / ".github" / "workflows" / "release-integrity.yml"
+        workflow.write_text(
+            workflow.read_text(encoding="utf-8").replace(
+                'git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main',
+                'echo "$GITHUB_SHA"',
+                1,
+            ),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("merge-base" in error for error in check(repo)))
+
 
 if __name__ == "__main__":
     unittest.main()
