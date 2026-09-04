@@ -7,9 +7,20 @@
 1. `vault.config.yml` を読む。
 2. schema / data boundary に触れる場合は `docs/ARCHITECTURE.md` と `supabase/README.md` を読む。
 3. SQL を変更する場合は既存 migration と public RPC contract を確認する。
-4. 変更後は `python tooling/architecture_check.py` を実行する。
+4. ownership / dependency / decision-effect / configuration boundary が material な場合だけ `.agents/SKILLS_INDEX.md` を読み、必要なSkillだけを読む。
+5. 変更後は `python tooling/architecture_check.py` を実行する。
 
-全文走査、追加review、追加gateを既定にしません。
+全文走査、全Skill preload、追加review、追加gateを既定にしません。
+
+## Skill boundary
+
+Public Skillは分析・分類の再利用contractです。
+
+- `dependency-boundary`: semantic ownership / public-private / dependency direction
+- `functional-decomposition`: meaningful decision / external effect separation
+- `configuration-boundary`: domain / implementation / deployment / runtime / provider / secret / derived value classification
+
+Skillの存在はmutation権限を付与しません。taskへmaterialなSkillだけを使い、unknownを推測で埋めず、完了後に追加workflowやreview stackを自動生成しません。
 
 ## Canonical boundary
 
