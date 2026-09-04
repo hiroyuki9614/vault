@@ -31,6 +31,15 @@ public.documents  <- canonical data
 - Agent / client の通常 read/write は semantic RPC を使用します。table schema を public contract にしません。
 - migration / policy / architecture を増やす前に、既存境界で解決できるか確認します。
 
+## Public design contracts
+
+このReference Implementationで再利用できる設計契約:
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Supabase-first Vault全体のcanonical / data boundary
+- [`docs/RESPONSIBILITY_BOUNDARIES.md`](docs/RESPONSIBILITY_BOUNDARIES.md) — Responsibility / Capability / Port / dependency boundary
+- [`docs/FUNCTIONAL_CORE_EFFECTFUL_ADAPTER.md`](docs/FUNCTIONAL_CORE_EFFECTFUL_ADAPTER.md) — pure decision logicと外部I/Oの分離
+- [`docs/SKILL_DISTILLATION.md`](docs/SKILL_DISTILLATION.md) — Agent Skillをtype / trait /固有semanticへ蒸留するcontract
+
 ## Quick start
 
 1. Supabase project を作成します。
