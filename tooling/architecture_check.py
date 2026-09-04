@@ -10,6 +10,7 @@ ACTION_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 USES_LINE_RE = re.compile(r"^-?\s*uses:\s*([^#\s]+)")
 OSV_SCANNER_ACTION = "google/osv-scanner-action/osv-scanner-action@baa4139e56d6312335d899e6ba045fa16d1d3d0b"
 WRITER_GUARD = "coalesce(public.current_vault_role(p_vault_id), '') not in ('owner', 'editor')"
+LOOPBACK_DEFAULT = "env.VAULT_HOST?.trim() || '127.0.0.1'"
 
 
 def load_config() -> dict:
@@ -77,6 +78,14 @@ def check(root: Path = ROOT) -> list[str]:
         if "npm ci" not in text: errors.append("architecture workflow must use npm ci")
         if "npm install" in text: errors.append("architecture workflow must not use npm install")
         if "npm run build" not in text: errors.append("architecture workflow must build the production runtime")
+        for fragment in (
+            "node dist/server/main.js",
+            "curl --fail --silent http://127.0.0.1:3100/health/live",
+            'kill -TERM "$pid"',
+            'wait "$pid"',
+        ):
+            if fragment not in text:
+                errors.append(f"architecture workflow missing production runtime smoke invariant: {fragment}")
 
     codeql_workflow = workflows_root / "codeql.yml"
     if codeql_workflow.exists():
@@ -182,7 +191,9 @@ def check(root: Path = ROOT) -> list[str]:
     runtime_config = root / "server" / "config.ts"
     if runtime_config.exists():
         text = runtime_config.read_text(encoding="utf-8")
-        for fragment in ("'127.0.0.1'", "VAULT_ALLOW_PUBLIC_BIND", "SUPABASE_RPC_TIMEOUT_MS", "VAULT_MAX_BODY_BYTES"):
+        if LOOPBACK_DEFAULT not in text:
+            errors.append("server runtime must default VAULT_HOST to 127.0.0.1")
+        for fragment in ("VAULT_ALLOW_PUBLIC_BIND", "SUPABASE_RPC_TIMEOUT_MS", "VAULT_MAX_BODY_BYTES"):
             if fragment not in text: errors.append(f"server runtime configuration missing invariant: {fragment}")
         if "process.env" in text: errors.append("server config parser must receive environment explicitly")
         if "SUPABASE_SERVICE_ROLE" in text: errors.append("normal server runtime must not accept a Supabase service-role credential")
@@ -198,6 +209,7 @@ def check(root: Path = ROOT) -> list[str]:
             "/v1/documents/put",
             "/v1/documents/delete",
             "requireBearer",
+            "requireJsonContentType",
             "config.maxBodyBytes",
             "createSupabaseRpcDocumentStore",
             "DocumentStoreError",
@@ -236,7 +248,9 @@ def check(root: Path = ROOT) -> list[str]:
         text = nginx.read_text(encoding="utf-8")
         for fragment in (
             "server 127.0.0.1:3100;",
+            "return 301 https://vault.example.com$request_uri;",
             "location /v1/",
+            'proxy_set_header Connection "";',
             "proxy_set_header Authorization $http_authorization;",
             "proxy_set_header X-Request-ID $request_id;",
             "client_max_body_size 1m;",
@@ -245,6 +259,7 @@ def check(root: Path = ROOT) -> list[str]:
         ):
             if fragment not in text: errors.append(f"Nginx deployment missing invariant: {fragment}")
         if "0.0.0.0:3100" in text: errors.append("Nginx must proxy to the loopback Node upstream")
+        if "https://$host$request_uri" in text: errors.append("Nginx HTTP redirect must not reflect an untrusted Host header")
 
     systemd = root / "deploy" / "systemd" / "vault.service.example"
     if systemd.exists():
