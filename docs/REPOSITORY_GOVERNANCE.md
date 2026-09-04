@@ -6,6 +6,8 @@ This document separates controls enforceable from repository source from control
 
 The source repository must remain useful when copied to another GitHub organization, so organization-specific branch governance is not encoded as a fake runtime mechanism.
 
+The intended `main` ruleset is declared in [`config/github-main-ruleset-contract.json`](../config/github-main-ruleset-contract.json). That file is a source-controlled governance contract, **not** proof that GitHub administrator settings are active.
+
 ## Source-enforced controls
 
 The repository itself enforces or declares:
@@ -25,26 +27,57 @@ The repository itself enforces or declares:
 - same-identity mutation verification
 - caller-generated document identity and idempotent exact put replay
 - explicit owner/editor authorization before document write replay reconciliation
+- a machine-readable intended `main` ruleset contract
+- a governance checker that fails when required workflow job contexts drift from that contract
 
 ## GitHub administrator controls
 
 A production organization should create an **active repository ruleset targeting `main`**.
 
-Recommended minimum:
+The required status contexts are derived from jobs that have actually completed successfully on `main`, not from workflow display names:
+
+- `check` from workflow `architecture`
+- `postgres-contract` from workflow `database-contract`
+- `scan` from workflow `dependency-vulnerability-scan`
+- `CodeQL (javascript-typescript)` from workflow `codeql`
+- `CodeQL (python)` from workflow `codeql`
+
+Recommended minimum ruleset behavior:
 
 1. Require pull requests before merging.
-2. Require the repository's `architecture` check.
-3. Require the `database-contract` check for all changes that can affect migrations/RLS/RPC behavior; requiring it for every PR is the simpler safe default.
-4. Require the `dependency-vulnerability-scan` check.
-5. Require CodeQL checks appropriate to the changed languages / organization policy.
-6. Block force pushes.
-7. Block branch deletion.
-8. Require the branch to be up to date before merge when strict merge-head verification is desired.
-9. Restrict bypass to a small break-glass administrator set.
-10. Require at least one independent approval for multi-maintainer production use.
-11. Require CODEOWNERS review for security-critical paths when there is an independent eligible reviewer.
+2. Require all five status contexts above.
+3. Require the branch to be up to date before merge.
+4. Block force pushes.
+5. Block branch deletion.
+6. Restrict bypass to a small break-glass administrator set.
 
-For a single-maintainer reference repository, rules that require a second human reviewer can make all maintenance impossible. The production organization, not this public reference repository, owns that staffing/policy decision.
+For this single-maintainer public reference repository, the declarative baseline keeps required approvals at `0` so the repository does not become impossible to maintain. For a multi-maintainer production fork, require at least one independent approval and enable CODEOWNERS review for security-critical paths.
+
+## Applying the public-reference ruleset
+
+In GitHub repository administration, create a branch ruleset with these values:
+
+```text
+Name: enterprise-main
+Enforcement: Active
+Target: default branch / main
+Require pull request: yes
+Required approvals: 0 for this single-maintainer public reference
+Require status checks: yes
+Require branch up to date: yes
+Block force pushes: yes
+Block deletion: yes
+Required contexts:
+  check
+  postgres-contract
+  scan
+  CodeQL (javascript-typescript)
+  CodeQL (python)
+```
+
+For an organization production fork, change approvals to at least `1`, require CODEOWNERS review when an eligible independent reviewer exists, and keep bypass actors limited to documented break-glass administrators.
+
+After applying the setting, verify the repository ruleset API or GitHub UI shows an active ruleset targeting `main`. Source files must never claim the administrator state is active unless it has been separately read back.
 
 ## GitHub security settings
 
@@ -78,7 +111,7 @@ For a production fork or internal repository:
 
 Repository rulesets and GitHub security-analysis settings are administrative state. They are not represented by Markdown, TypeScript, Supabase migrations, or Agent Skills and must not be simulated by a custom Control Plane.
 
-The public reference repository should periodically verify that intended GitHub settings still match this document, while GitHub-side settings remain separately administered state.
+`config/github-main-ruleset-contract.json` expresses intended state only. `tooling/github_governance_check.py` verifies that the declared contexts still correspond to source-controlled workflow jobs; it deliberately does not pretend to verify GitHub administrator state.
 
 ## Break-glass principle
 
