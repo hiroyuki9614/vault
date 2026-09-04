@@ -105,11 +105,14 @@ class ArchitectureCheckTest(unittest.TestCase):
         workflow.write_text(workflow.read_text(encoding="utf-8").replace("javascript-typescript", "removed-language"), encoding="utf-8")
         self.assertTrue(any("CodeQL workflow missing invariant" in error for error in check(repo)))
 
-    def test_dependency_review_severity_invariant_fails(self):
+    def test_dependency_audit_severity_invariant_fails(self):
         repo = self.copy_repo()
-        workflow = repo / ".github" / "workflows" / "dependency-review.yml"
-        workflow.write_text(workflow.read_text(encoding="utf-8").replace("fail-on-severity: high", "fail-on-severity: critical"), encoding="utf-8")
-        self.assertTrue(any("dependency review must fail" in error for error in check(repo)))
+        workflow = repo / ".github" / "workflows" / "dependency-audit.yml"
+        workflow.write_text(
+            workflow.read_text(encoding="utf-8").replace("npm audit --audit-level=high", "npm audit --audit-level=critical"),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("dependency audit must reject" in error for error in check(repo)))
 
     def test_provider_leak_in_public_api_fails(self):
         repo = self.copy_repo()
