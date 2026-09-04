@@ -7,7 +7,8 @@ Describe the change and the capability/responsibility it affects.
 - [ ] `npm run check` passes
 - [ ] Architecture workflow passes
 - [ ] CodeQL passes when applicable
-- [ ] Dependency review passes when dependencies change
+- [ ] Dependency audit passes
+- [ ] GitHub Dependency Review passes when Dependency Graph is enabled and the repository requires it
 - [ ] Mutation/RLS changes include relevant tests or acceptance evidence
 - [ ] No secrets, private data, or provider credentials are committed
 
