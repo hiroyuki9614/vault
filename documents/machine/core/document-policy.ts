@@ -1,35 +1,87 @@
 import type {
   DeleteDocumentCommand,
+  DocumentIdentityRequest,
+  DocumentPathRequest,
   DocumentSnapshot,
   DocumentWritePlan,
+  JsonObject,
   JsonValue,
   PutDocumentCommand,
 } from '../contracts/document.js';
+import { DocumentValidationError } from '../contracts/document.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function assertUuid(value: string, field: string): string {
   if (!UUID_RE.test(value)) {
-    throw new RangeError(`${field} must be a UUID`);
+    throw new DocumentValidationError('invalid_uuid', field, `${field} must be a UUID`);
   }
   return value;
 }
 
 function assertPath(path: string): string {
   if (path.trim() === '') {
-    throw new RangeError('path must not be blank');
+    throw new DocumentValidationError('invalid_path', 'path', 'path must not be blank');
   }
   if (path.includes('\u0000')) {
-    throw new RangeError('path must not contain NUL');
+    throw new DocumentValidationError('invalid_path', 'path', 'path must not contain NUL');
+  }
+  if (path.length > 512) {
+    throw new DocumentValidationError('invalid_path', 'path', 'path must not exceed 512 characters');
   }
   return path;
 }
 
 function assertVersion(version: number): number {
   if (!Number.isSafeInteger(version) || version < 1) {
-    throw new RangeError('expectedVersion must be a positive safe integer');
+    throw new DocumentValidationError(
+      'invalid_version',
+      'expectedVersion',
+      'expectedVersion must be a positive safe integer',
+    );
   }
   return version;
+}
+
+function assertJsonValue(value: unknown, field: string, seen: WeakSet<object>): asserts value is JsonValue {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      throw new DocumentValidationError('invalid_metadata', field, `${field} must contain finite JSON numbers`);
+    }
+    return;
+  }
+
+  if (typeof value !== 'object') {
+    throw new DocumentValidationError('invalid_metadata', field, `${field} must contain JSON values only`);
+  }
+
+  if (seen.has(value)) {
+    throw new DocumentValidationError('invalid_metadata', field, `${field} must not contain cycles`);
+  }
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertJsonValue(item, `${field}[${index}]`, seen));
+    seen.delete(value);
+    return;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new DocumentValidationError('invalid_metadata', field, `${field} must contain plain JSON objects only`);
+  }
+
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    assertJsonValue(item, `${field}.${key}`, seen);
+  }
+  seen.delete(value);
+}
+
+function assertMetadata(metadata: JsonObject | undefined): JsonObject {
+  const resolved: JsonObject = metadata ?? {};
+  assertJsonValue(resolved, 'metadata', new WeakSet<object>());
+  return resolved;
 }
 
 function jsonEqual(left: JsonValue, right: JsonValue): boolean {
@@ -60,10 +112,39 @@ function jsonEqual(left: JsonValue, right: JsonValue): boolean {
       return false;
     }
 
-    return leftKeys.every((key) => jsonEqual(leftRecord[key] as JsonValue, rightRecord[key] as JsonValue));
+    return leftKeys.every((key) =>
+      jsonEqual(leftRecord[key] as JsonValue, rightRecord[key] as JsonValue),
+    );
   }
 
   return false;
+}
+
+function snapshotContentMatchesRequest(
+  request: Extract<DocumentWritePlan, { readonly kind: 'put' }>['request'],
+  snapshot: DocumentSnapshot,
+): boolean {
+  return (
+    snapshot.vaultId === request.vaultId &&
+    snapshot.path === request.path &&
+    snapshot.title === request.title &&
+    snapshot.content === request.content &&
+    jsonEqual(snapshot.metadata, request.metadata)
+  );
+}
+
+export function planGetDocumentByPath(vaultId: string, path: string): DocumentPathRequest {
+  return {
+    vaultId: assertUuid(vaultId, 'vaultId'),
+    path: assertPath(path),
+  };
+}
+
+export function planGetDocumentById(vaultId: string, documentId: string): DocumentIdentityRequest {
+  return {
+    vaultId: assertUuid(vaultId, 'vaultId'),
+    documentId: assertUuid(documentId, 'documentId'),
+  };
 }
 
 export function planPutDocument(command: PutDocumentCommand): DocumentWritePlan {
@@ -71,7 +152,7 @@ export function planPutDocument(command: PutDocumentCommand): DocumentWritePlan 
   const path = assertPath(command.path);
   const title = command.title ?? '';
   const content = command.content ?? '';
-  const metadata = command.metadata ?? {};
+  const metadata = assertMetadata(command.metadata);
 
   if (command.kind === 'create') {
     return {
@@ -103,6 +184,7 @@ export function planPutDocument(command: PutDocumentCommand): DocumentWritePlan 
 }
 
 export function planDeleteDocument(command: DeleteDocumentCommand): DocumentWritePlan {
+  assertPath(command.path);
   return {
     kind: 'delete',
     request: {
@@ -110,32 +192,36 @@ export function planDeleteDocument(command: DeleteDocumentCommand): DocumentWrit
       documentId: assertUuid(command.id, 'id'),
       expectedVersion: assertVersion(command.expectedVersion),
     },
-    readBackPath: assertPath(command.path),
   };
 }
 
-export function verifyPutReadBack(
+export function verifyPutMutation(
   plan: Extract<DocumentWritePlan, { readonly kind: 'put' }>,
-  snapshot: DocumentSnapshot | null,
+  mutation: DocumentSnapshot,
 ): boolean {
-  if (snapshot === null) return false;
-
-  const expected = plan.request;
-  const identityMatches =
-    expected.documentId === null || snapshot.id === expected.documentId;
+  const request = plan.request;
+  const identityMatches = request.documentId === null || mutation.id === request.documentId;
   const versionMatches =
-    expected.expectedVersion === null
-      ? snapshot.version >= 1
-      : snapshot.version === expected.expectedVersion + 1;
+    request.expectedVersion === null
+      ? mutation.version === 1
+      : mutation.version === request.expectedVersion + 1;
 
+  return identityMatches && snapshotContentMatchesRequest(request, mutation) && versionMatches;
+}
+
+export function verifyPutReadBack(
+  mutation: DocumentSnapshot,
+  readBack: DocumentSnapshot | null,
+): boolean {
+  if (readBack === null) return false;
   return (
-    identityMatches &&
-    snapshot.vaultId === expected.vaultId &&
-    snapshot.path === expected.path &&
-    snapshot.title === expected.title &&
-    snapshot.content === expected.content &&
-    jsonEqual(snapshot.metadata, expected.metadata) &&
-    versionMatches
+    readBack.id === mutation.id &&
+    readBack.vaultId === mutation.vaultId &&
+    readBack.path === mutation.path &&
+    readBack.title === mutation.title &&
+    readBack.content === mutation.content &&
+    jsonEqual(readBack.metadata, mutation.metadata) &&
+    readBack.version === mutation.version
   );
 }
 
