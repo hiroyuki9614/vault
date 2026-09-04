@@ -25,6 +25,14 @@ def check(root: Path = ROOT) -> list[str]:
         errors.append("runtime_language must be typescript")
     if config.get("runtime_architecture") != "functional_core_effectful_adapter":
         errors.append("runtime_architecture must be functional_core_effectful_adapter")
+    if config.get("dependency_install") != "npm_ci":
+        errors.append("dependency_install must be npm_ci")
+    if config.get("lockfile_required") is not True:
+        errors.append("lockfile_required must be true")
+    if config.get("identity_read_back_required") is not True:
+        errors.append("identity_read_back_required must be true")
+    if config.get("semantic_store_errors_required") is not True:
+        errors.append("semantic_store_errors_required must be true")
 
     for path in config.get("required_paths", []):
         if not (root / path).exists():
@@ -33,6 +41,26 @@ def check(root: Path = ROOT) -> list[str]:
     for path in config.get("forbidden_top_level_paths", []):
         if (root / path).exists():
             errors.append(f"legacy/personal path must not exist: {path}")
+
+    package_path = root / "package.json"
+    if package_path.exists():
+        package = json.loads(package_path.read_text(encoding="utf-8"))
+        if package.get("packageManager") != "npm@11.19.0":
+            errors.append("packageManager must pin npm@11.19.0")
+        dev_dependencies = package.get("devDependencies", {})
+        for name, version in dev_dependencies.items():
+            if not isinstance(version, str) or version.startswith(("^", "~", ">", "<", "*")):
+                errors.append(f"devDependency must be exact: {name}={version}")
+
+    workflow = root / ".github" / "workflows" / "architecture.yml"
+    if workflow.exists():
+        workflow_text = workflow.read_text(encoding="utf-8")
+        if "npm ci" not in workflow_text:
+            errors.append("architecture workflow must use npm ci")
+        if "npm install" in workflow_text:
+            errors.append("architecture workflow must not use npm install")
+        if "timeout-minutes:" not in workflow_text:
+            errors.append("architecture workflow must bound execution time")
 
     core_root = root / "documents" / "machine" / "core"
     if core_root.exists():
@@ -47,21 +75,21 @@ def check(root: Path = ROOT) -> list[str]:
                         f"functional core contains effect/provider fragment in {path.relative_to(root)}: {fragment}"
                     )
 
-    migration = root / "supabase" / "migrations" / "202608310001_supabase_first_vault.sql"
-    if migration.exists():
-        sql = migration.read_text(encoding="utf-8").lower()
-        required_fragments = [
-            "enable row level security",
-            "auth.uid()",
-            "security invoker",
-            "version_conflict",
-        ]
-        for fragment in required_fragments:
-            if fragment not in sql:
-                errors.append(f"migration missing invariant: {fragment}")
-        for rpc in config.get("required_rpc_names", []):
-            if f"create or replace function public.{rpc}" not in sql:
-                errors.append(f"migration missing semantic RPC: {rpc}")
+    migrations_root = root / "supabase" / "migrations"
+    migration_files = sorted(migrations_root.glob("*.sql")) if migrations_root.exists() else []
+    all_sql = "\n".join(path.read_text(encoding="utf-8").lower() for path in migration_files)
+    required_fragments = [
+        "enable row level security",
+        "auth.uid()",
+        "security invoker",
+        "version_conflict",
+    ]
+    for fragment in required_fragments:
+        if fragment not in all_sql:
+            errors.append(f"migrations missing invariant: {fragment}")
+    for rpc in config.get("required_rpc_names", []):
+        if f"create or replace function public.{rpc}" not in all_sql:
+            errors.append(f"migrations missing semantic RPC: {rpc}")
 
     adapter = root / "documents" / "machine" / "adapters" / "supabase-rpc-document-store.ts"
     if adapter.exists():
@@ -69,6 +97,18 @@ def check(root: Path = ROOT) -> list[str]:
         for rpc in config.get("required_rpc_names", []):
             if f"'{rpc}'" not in adapter_text and f'"{rpc}"' not in adapter_text:
                 errors.append(f"Supabase adapter missing semantic RPC mapping: {rpc}")
+        if "DocumentStoreError" not in adapter_text:
+            errors.append("Supabase adapter must normalize provider failures to DocumentStoreError")
+
+    service = root / "documents" / "machine" / "runtime" / "document-service.ts"
+    if service.exists():
+        service_text = service.read_text(encoding="utf-8")
+        if "store.getById" not in service_text:
+            errors.append("document service must verify mutations by document identity")
+
+    public_api = root / "documents" / "public.ts"
+    if public_api.exists() and "supabase" in public_api.read_text(encoding="utf-8").lower():
+        errors.append("documents public API must remain provider-free")
 
     forbidden_text = [
         "kind: personal",
@@ -94,7 +134,7 @@ def main() -> int:
         for error in errors:
             print(f"FAIL: {error}")
         return 1
-    print("PASS: public vault has a TypeScript functional core with Supabase behind semantic adapters")
+    print("PASS: public vault meets the enterprise TypeScript functional-core baseline")
     return 0
 
 
