@@ -7,7 +7,7 @@ const baseEnv = {
 };
 
 describe('parseRuntimeConfig', () => {
-  it('defaults to loopback for nginx upstream use', () => {
+  it('defaults to loopback for Apache reverse-proxy use', () => {
     const config = parseRuntimeConfig(baseEnv);
     expect(config.host).toBe('127.0.0.1');
     expect(config.port).toBe(3100);
