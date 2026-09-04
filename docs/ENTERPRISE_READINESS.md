@@ -27,7 +27,7 @@ The current baseline requires:
 - bounded CI execution time
 - GitHub Actions pinned to immutable commits
 - CodeQL for JavaScript/TypeScript and Python
-- pull-request dependency review
+- locked dependency audit with `npm audit --audit-level=high`
 - Dependabot for npm and GitHub Actions
 - CODEOWNERS for security-critical paths
 - architecture regression checks
@@ -97,12 +97,12 @@ Source-controlled checks include:
 
 - read-only architecture verification workflow
 - CodeQL `security-extended` analysis for JavaScript/TypeScript and Python
-- dependency review that rejects newly introduced High/Critical vulnerabilities
+- locked dependency audit rejecting High/Critical npm advisories
 - immutable commit SHA pinning for third-party GitHub Actions
 - Dependabot updates
 - CODEOWNERS declarations
 
-These controls do not replace GitHub-side branch rules. See `docs/REPOSITORY_GOVERNANCE.md`.
+GitHub Dependency Review is an additional graph-backed control that requires Dependency Graph to be enabled in repository administration. Production organizations should enable and require it when available. See `docs/REPOSITORY_GOVERNANCE.md`.
 
 ## Recommended production topology
 
@@ -162,7 +162,8 @@ Do not share service-role credentials between environments.
 ### Delivery
 
 - protected `main` branch or active ruleset
-- required passing architecture / CodeQL / dependency checks as appropriate
+- required passing architecture / CodeQL / dependency-audit checks
+- GitHub Dependency Review required once Dependency Graph is enabled
 - pull-request review policy appropriate to the organization
 - controlled production deployment authority
 - migration rollout / rollback procedure
