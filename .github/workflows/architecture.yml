@@ -28,12 +28,12 @@ jobs:
       - name: Bootstrap lockfile
         run: npm install --no-audit --no-fund
 
-      - name: Emit generated lockfile for bootstrap
-        run: |
-          echo LOCKFILE_BEGIN
-          base64 -w0 package-lock.json
-          echo
-          echo LOCKFILE_END
+      - name: Upload generated lockfile bootstrap
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-lock-bootstrap
+          path: package-lock.json
+          retention-days: 1
 
       - name: Typecheck functional core
         run: npm run typecheck
