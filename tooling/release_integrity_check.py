@@ -44,6 +44,9 @@ def check(root: Path = ROOT) -> list[str]:
             "if: startsWith(github.ref, 'refs/tags/v')",
             "id-token: write",
             "attestations: write",
+            "fetch-depth: 0",
+            "git fetch --no-tags origin main:refs/remotes/origin/main",
+            'git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main',
             "test \"$GITHUB_REF_NAME\" = \"v${version}\"",
             UPLOAD_ACTION,
             ATTEST_ACTION,
@@ -78,6 +81,7 @@ def check(root: Path = ROOT) -> list[str]:
             "gh attestation verify",
             "GitHub Actions artifact",
             "RELEASE-MANIFEST.json",
+            "integrated into `main`",
         ):
             if fragment not in text:
                 errors.append(f"release integrity documentation missing invariant: {fragment}")

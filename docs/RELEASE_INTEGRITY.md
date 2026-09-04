@@ -93,12 +93,15 @@ Attestations are created only for `v*` tag builds. Pull-request and normal `main
 
 For a version tag, the workflow:
 
-1. requires the tag to equal `v<package.json version>`;
-2. rebuilds the exact tagged commit;
-3. recreates the deterministic runtime bundle, SBOM and checksums;
-4. uploads the release directory as a GitHub Actions artifact;
-5. creates GitHub build-provenance attestation for the runtime tarball;
-6. creates an SBOM attestation binding the CycloneDX SBOM to the same tarball.
+1. requires the tagged commit to be integrated into `main`;
+2. requires the tag to equal `v<package.json version>`;
+3. rebuilds the exact tagged commit;
+4. recreates the deterministic runtime bundle, SBOM and checksums;
+5. uploads the release directory as a GitHub Actions artifact;
+6. creates GitHub build-provenance attestation for the runtime tarball;
+7. creates an SBOM attestation binding the CycloneDX SBOM to the same tarball.
+
+The main-ancestry gate uses `git merge-base --is-ancestor` against the fetched `origin/main`. A matching package version on an unmerged feature commit is therefore not sufficient to produce an attested release.
 
 The GitHub Actions artifact is an operational distribution surface with bounded retention; it is not claimed to be permanent archival storage or a legal software license.
 
@@ -112,7 +115,7 @@ Artifact attestations establish provenance/integrity evidence. They do not claim
 
 ## Version-tag policy
 
-The attestation job rejects a tag whose version does not exactly match `package.json`.
+The attestation job rejects a tag whose version does not exactly match `package.json`, and rejects a tagged commit that is not integrated into `main`.
 
 Example:
 
@@ -122,6 +125,8 @@ accepted tag         = v0.2.0
 ```
 
 Creating a Git tag is therefore a release decision. The workflow does not automatically increment versions or create tags.
+
+GitHub-side creation/update/deletion controls for `v*` are defined separately in `config/github-release-tag-ruleset-contract.json` and `docs/RELEASE_TAG_GOVERNANCE.md`. Those controls are administrator-managed state and must be read back before claiming tag immutability.
 
 ## Verification contract
 
@@ -135,7 +140,7 @@ That job must prove:
 - a CycloneDX runtime SBOM is valid JSON;
 - SHA-256 checksums are generated and verify successfully.
 
-`tooling/release_integrity_check.py` and its regressions additionally prevent weakening the workflow contract by silently removing deterministic comparison, checksum verification, tag-only attestation, immutable action pins, or SBOM attestation.
+`tooling/release_integrity_check.py` and its regressions additionally prevent weakening the workflow contract by silently removing deterministic comparison, checksum verification, main-ancestry enforcement, tag-only attestation, immutable action pins, or SBOM attestation.
 
 ## Deployment acceptance
 
@@ -145,7 +150,7 @@ Before deploying a tagged artifact to an enterprise environment:
 2. run `gh attestation verify` against the runtime tarball;
 3. inspect the source commit recorded in `RELEASE-MANIFEST.json`;
 4. inspect the CycloneDX SBOM;
-5. confirm the tagged source commit passed repository required checks;
+5. confirm the tagged source commit is integrated into `main` and passed repository required checks;
 6. deploy the runtime under the documented Apache/systemd boundary;
 7. perform target-environment Supabase/Auth/RLS acceptance separately.
 
