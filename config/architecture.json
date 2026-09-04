@@ -1,5 +1,5 @@
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "canonical_data_backend": "supabase",
   "supabase_required": true,
   "github_data_canonical": false,
@@ -13,6 +13,7 @@
   "pinned_workflow_actions_required": true,
   "code_scanning_workflow_required": true,
   "dependency_vulnerability_scan_required": true,
+  "database_contract_test_required": true,
   "forbidden_top_level_paths": [
     "00_Inbox",
     "10_Daily",
@@ -37,6 +38,7 @@
     ".github/workflows/architecture.yml",
     ".github/workflows/codeql.yml",
     ".github/workflows/dependency-vulnerability-scan.yml",
+    ".github/workflows/database-contract.yml",
     "core/machine/main/repository.json",
     "core/machine/indexes/responsibilities.json",
     "documents/public.ts",
@@ -52,7 +54,10 @@
     "supabase/README.md",
     "supabase/migrations/202608310001_supabase_first_vault.sql",
     "supabase/migrations/202609040001_document_identity_read.sql",
-    "supabase/migrations/202609040002_idempotent_document_create.sql"
+    "supabase/migrations/202609040002_idempotent_document_create.sql",
+    "supabase/migrations/202609040003_document_write_authorization.sql",
+    "tests/postgres/supabase-auth-bootstrap.sql",
+    "tests/postgres/document-rls-acceptance.sql"
   ],
   "required_rpc_names": [
     "get_document",
@@ -63,7 +68,8 @@
   "required_sql_fragments": [
     "document_id_required",
     "idempotency_conflict",
-    "path_conflict"
+    "path_conflict",
+    "permission_denied"
   ],
   "core_forbidden_fragments": [
     "supabase",

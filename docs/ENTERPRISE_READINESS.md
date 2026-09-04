@@ -16,12 +16,14 @@ The current baseline requires:
 - provider-free public capability contracts
 - Supabase behind semantic Ports / Adapters
 - Supabase Auth + RLS for mutable data authorization
+- explicit owner/editor authorization before document write replay reconciliation
 - optimistic concurrency for document writes
 - same-document-ID read-back after mutation
 - caller-generated document identity for create
 - idempotent exact replay for create and update puts
 - semantic store error codes instead of provider error objects
 - versioned SQL migrations
+- executable PostgreSQL migration + RLS/RPC acceptance using synthetic identities
 - exact direct development dependency versions
 - committed npm lockfile and `npm ci` in CI
 - bounded CI execution time
@@ -52,6 +54,19 @@ command
 Create requires a caller-generated UUID and must return version `1`. Update must return `expectedVersion + 1`.
 
 A mismatched mutation result or read-back fails closed.
+
+### Write authorization before reconciliation
+
+RLS remains authoritative, but write RPCs also perform an explicit semantic role check before mutation or exact-replay reconciliation:
+
+```text
+owner/editor -> may enter put/delete mutation + reconciliation
+viewer       -> permission_denied
+non-member   -> permission_denied
+anon         -> no RPC execute authority
+```
+
+This prevents a read-authorized viewer from receiving a write-shaped success result when an already-committed row happens to match an exact replay request.
 
 ### Ambiguous transport outcomes
 
@@ -92,11 +107,40 @@ Provider-specific errors are mapped at the adapter boundary to semantic `Documen
 
 `unavailable` identifies a transport/infrastructure condition that may be retried after applying the operation's reconciliation rules. Provider error text is not the application contract.
 
+## Executable database contract
+
+`.github/workflows/database-contract.yml` turns the database contract into executable evidence rather than static SQL-string inspection only.
+
+On the GitHub-hosted Ubuntu 24.04 runner it:
+
+1. starts PostgreSQL;
+2. creates an isolated `vault_ci` database;
+3. bootstraps a minimal synthetic Supabase Auth compatibility fixture;
+4. applies every committed migration in lexical order with `ON_ERROR_STOP`;
+5. executes `tests/postgres/document-rls-acceptance.sql`.
+
+The acceptance suite uses only synthetic UUIDs/content and verifies:
+
+- owner document read/write/delete;
+- editor document read/write and owner-only membership denial;
+- viewer read plus explicit write/delete denial, including an exact-replay-shaped request;
+- authenticated non-member tenant isolation and write denial;
+- anonymous RPC execution denial;
+- caller-generated create identity and version `1`;
+- exact create replay without duplicate rows;
+- `idempotency_conflict` and `path_conflict`;
+- exact update replay without a second mutation;
+- divergent stale update `version_conflict`;
+- same-ID absence after delete.
+
+This is repository-level PostgreSQL evidence. It is not a substitute for acceptance against a real target Supabase project and its Auth/platform configuration.
+
 ## Repository security automation
 
 Source-controlled checks include:
 
 - read-only architecture verification workflow
+- executable database contract workflow
 - CodeQL `security-extended` analysis for JavaScript/TypeScript and Python
 - OSV-Scanner lockfile vulnerability scan
 - failure on any known vulnerability reported for the committed npm lockfile
@@ -164,7 +208,7 @@ Do not share service-role credentials between environments.
 ### Delivery
 
 - protected `main` branch or active ruleset
-- required passing `architecture`, CodeQL, and `dependency-vulnerability-scan` checks
+- required passing `architecture`, `database-contract`, CodeQL, and `dependency-vulnerability-scan` checks
 - GitHub Dependency Review required once Dependency Graph is enabled
 - pull-request review policy appropriate to the organization
 - controlled production deployment authority
@@ -175,29 +219,31 @@ Do not share service-role credentials between environments.
 - dependency update review
 - vulnerability triage
 - secret scanning / push protection where available
-- periodic RLS / authorization verification
+- periodic RLS / authorization verification in the target Supabase environment
 - penetration testing when risk or policy requires it
 
 ## Recommended acceptance before a production rollout
 
-At minimum, verify with synthetic test users:
+At minimum, verify with synthetic test users in the target environment:
 
 1. owner can read/write/delete documents.
 2. editor can read/write documents but cannot perform owner-only membership operations.
-3. viewer can read but cannot write.
-4. unauthenticated access is rejected.
-5. stale `expectedVersion` fails without mutation.
-6. successful create/update returns and read-backs the same document ID.
-7. replaying the exact same create does not create a second document.
-8. reusing a create ID with different state fails closed.
-9. path collision across identities fails closed.
-10. replaying an already committed exact update returns the committed version rather than mutating twice.
-11. delete is followed by same-ID absence.
-12. Supabase outage does not create a GitHub or local second canonical.
-13. runtime logs do not contain secrets.
-14. backup restore is demonstrated in the target organization's environment.
-15. repository ruleset / branch protection matches the organization's approved governance policy.
-16. OSV dependency vulnerability scan is green for the exact committed lockfile being released.
+3. viewer can read but cannot write, including exact-replay-shaped write attempts.
+4. authenticated non-members cannot read or write another vault.
+5. unauthenticated access is rejected.
+6. stale `expectedVersion` fails without mutation.
+7. successful create/update returns and read-backs the same document ID.
+8. replaying the exact same create does not create a second document.
+9. reusing a create ID with different state fails closed.
+10. path collision across identities fails closed.
+11. replaying an already committed exact update returns the committed version rather than mutating twice.
+12. delete is followed by same-ID absence.
+13. Supabase outage does not create a GitHub or local second canonical.
+14. runtime logs do not contain secrets.
+15. backup restore is demonstrated in the target organization's environment.
+16. repository ruleset / branch protection matches the organization's approved governance policy.
+17. OSV dependency vulnerability scan is green for the exact committed lockfile being released.
+18. repository `database-contract` is green for the exact migration set being released.
 
 ## Non-claims
 

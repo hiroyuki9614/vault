@@ -40,11 +40,15 @@ class ArchitectureCheckTest(unittest.TestCase):
 
     def test_missing_idempotent_create_invariant_fails(self):
         repo = self.copy_repo()
-        migration = repo / "supabase" / "migrations" / "202609040002_idempotent_document_create.sql"
-        migration.write_text(
-            migration.read_text(encoding="utf-8").replace("idempotency_conflict", "removed_conflict"),
-            encoding="utf-8",
-        )
+        for name in (
+            "202609040002_idempotent_document_create.sql",
+            "202609040003_document_write_authorization.sql",
+        ):
+            migration = repo / "supabase" / "migrations" / name
+            migration.write_text(
+                migration.read_text(encoding="utf-8").replace("idempotency_conflict", "removed_conflict"),
+                encoding="utf-8",
+            )
         self.assertTrue(any("idempotency_conflict" in error for error in check(repo)))
 
     def test_create_command_without_required_identity_fails(self):
@@ -129,6 +133,46 @@ class ArchitectureCheckTest(unittest.TestCase):
         workflow = repo / ".github" / "workflows" / "dependency-vulnerability-scan.yml"
         workflow.write_text(workflow.read_text(encoding="utf-8") + "\n# npm audit\n", encoding="utf-8")
         self.assertTrue(any("must not depend on npm audit" in error for error in check(repo)))
+
+    def test_database_contract_requires_ordered_migration_execution(self):
+        repo = self.copy_repo()
+        workflow = repo / ".github" / "workflows" / "database-contract.yml"
+        workflow.write_text(
+            workflow.read_text(encoding="utf-8").replace("supabase/migrations/*.sql", "supabase/migrations/one.sql"),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("supabase/migrations/*.sql" in error for error in check(repo)))
+
+    def test_database_contract_requires_fail_fast_psql(self):
+        repo = self.copy_repo()
+        workflow = repo / ".github" / "workflows" / "database-contract.yml"
+        workflow.write_text(
+            workflow.read_text(encoding="utf-8").replace("-v ON_ERROR_STOP=1", ""),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("ON_ERROR_STOP" in error for error in check(repo)))
+
+    def test_document_write_authorization_guard_is_required_for_put_and_delete(self):
+        repo = self.copy_repo()
+        migration = repo / "supabase" / "migrations" / "202609040003_document_write_authorization.sql"
+        migration.write_text(
+            migration.read_text(encoding="utf-8").replace(
+                "coalesce(public.current_vault_role(p_vault_id), '') not in ('owner', 'editor')",
+                "false",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("authorize owner or editor" in error for error in check(repo)))
+
+    def test_database_acceptance_requires_anonymous_boundary(self):
+        repo = self.copy_repo()
+        acceptance = repo / "tests" / "postgres" / "document-rls-acceptance.sql"
+        acceptance.write_text(
+            acceptance.read_text(encoding="utf-8").replace("set role anon", "set role removed_anon", 1),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("set role anon" in error for error in check(repo)))
 
     def test_provider_leak_in_public_api_fails(self):
         repo = self.copy_repo()

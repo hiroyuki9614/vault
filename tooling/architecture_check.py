@@ -9,6 +9,7 @@ CONFIG = ROOT / "config" / "architecture.json"
 ACTION_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 USES_LINE_RE = re.compile(r"^-?\s*uses:\s*([^#\s]+)")
 OSV_SCANNER_ACTION = "google/osv-scanner-action/osv-scanner-action@baa4139e56d6312335d899e6ba045fa16d1d3d0b"
+WRITER_GUARD = "coalesce(public.current_vault_role(p_vault_id), '') not in ('owner', 'editor')"
 
 
 def load_config() -> dict:
@@ -32,6 +33,7 @@ def check(root: Path = ROOT) -> list[str]:
     if config.get("pinned_workflow_actions_required") is not True: errors.append("pinned_workflow_actions_required must be true")
     if config.get("code_scanning_workflow_required") is not True: errors.append("code_scanning_workflow_required must be true")
     if config.get("dependency_vulnerability_scan_required") is not True: errors.append("dependency_vulnerability_scan_required must be true")
+    if config.get("database_contract_test_required") is not True: errors.append("database_contract_test_required must be true")
 
     for path in config.get("required_paths", []):
         if not (root / path).exists(): errors.append(f"missing required path: {path}")
@@ -88,6 +90,23 @@ def check(root: Path = ROOT) -> list[str]:
         if "npm audit" in text:
             errors.append("dependency vulnerability scan must not depend on npm audit")
 
+    database_contract_workflow = workflows_root / "database-contract.yml"
+    if database_contract_workflow.exists():
+        text = database_contract_workflow.read_text(encoding="utf-8")
+        required_database_fragments = (
+            "runs-on: ubuntu-24.04",
+            "persist-credentials: false",
+            "sudo systemctl start postgresql.service",
+            "createdb vault_ci",
+            "-v ON_ERROR_STOP=1",
+            "tests/postgres/supabase-auth-bootstrap.sql",
+            "supabase/migrations/*.sql",
+            "tests/postgres/document-rls-acceptance.sql",
+        )
+        for fragment in required_database_fragments:
+            if fragment not in text:
+                errors.append(f"database contract workflow missing invariant: {fragment}")
+
     core_root = root / "documents" / "machine" / "core"
     if core_root.exists():
         forbidden = [fragment.lower() for fragment in config.get("core_forbidden_fragments", [])]
@@ -114,12 +133,36 @@ def check(root: Path = ROOT) -> list[str]:
     for rpc in config.get("required_rpc_names", []):
         if f"create or replace function public.{rpc}" not in all_sql: errors.append(f"migrations missing semantic RPC: {rpc}")
 
+    write_auth_migration = migrations_root / "202609040003_document_write_authorization.sql"
+    if write_auth_migration.exists():
+        text = write_auth_migration.read_text(encoding="utf-8").lower()
+        if text.count(WRITER_GUARD) < 2:
+            errors.append("document put/delete must authorize owner or editor before replay reconciliation")
+        if "raise exception 'permission_denied'" not in text:
+            errors.append("document write authorization must expose semantic permission_denied")
+
+    acceptance = root / "tests" / "postgres" / "document-rls-acceptance.sql"
+    if acceptance.exists():
+        text = acceptance.read_text(encoding="utf-8").lower()
+        for fragment in (
+            "set role authenticated",
+            "set role anon",
+            "idempotency_conflict",
+            "path_conflict",
+            "version_conflict",
+            "permission_denied",
+            "public.delete_document",
+            "acceptance_cross_tenant_read_leak",
+        ):
+            if fragment not in text:
+                errors.append(f"database acceptance missing invariant: {fragment}")
+
     adapter = root / "documents" / "machine" / "adapters" / "supabase-rpc-document-store.ts"
     if adapter.exists():
         text = adapter.read_text(encoding="utf-8")
         for rpc in config.get("required_rpc_names", []):
             if f"'{rpc}'" not in text and f'"{rpc}"' not in text: errors.append(f"Supabase adapter missing semantic RPC mapping: {rpc}")
-        for semantic_error in ("DocumentStoreError", "idempotency_conflict", "path_conflict"):
+        for semantic_error in ("DocumentStoreError", "idempotency_conflict", "path_conflict", "permission_denied"):
             if semantic_error not in text: errors.append(f"Supabase adapter missing semantic failure mapping: {semantic_error}")
 
     service = root / "documents" / "machine" / "runtime" / "document-service.ts"
@@ -152,7 +195,7 @@ def main() -> int:
     if errors:
         for error in errors: print(f"FAIL: {error}")
         return 1
-    print("PASS: public vault meets the enterprise resilience and security baseline")
+    print("PASS: public vault meets the enterprise executable database contract baseline")
     return 0
 
 

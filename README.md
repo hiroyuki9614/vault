@@ -53,6 +53,7 @@ documents/
 - create/update/delete は stable document ID を使って same-subject read-back します。
 - create は caller-generated UUID を必須にし、同一 create の再送で重複 row を作りません。
 - update も同一 `expectedVersion`・同一最終状態の再送を同じ commit 結果として扱います。
+- document write RPC は mutation/replay reconciliation 前に owner/editor を明示検証し、viewer/non-member は `permission_denied` で拒否します。
 - Supabase unavailable 時に GitHub Markdown へ write fallback しません。
 
 ## Enterprise engineering baseline
@@ -65,7 +66,9 @@ Repository-level baseline として次を強制します。
 - optimistic concurrency
 - same-document-ID read-back
 - idempotent create / exact update replay
+- explicit writer authorization before replay reconciliation
 - versioned SQL migrations
+- executable PostgreSQL migration + RLS/RPC acceptance with synthetic identities
 - exact direct development dependencies
 - committed npm lockfile + `npm ci`
 - bounded CI execution
@@ -121,12 +124,25 @@ Create command は呼出側で UUID を生成します。
 
 ```text
 update(id=A, expected=N, state=Y)
-  first commit     -> A/version N+1
-  exact replay     -> same A/version N+1
-  divergent replay -> version_conflict
+  first commit      -> A/version N+1
+  exact replay      -> same A/version N+1
+  divergent replay  -> version_conflict
 ```
 
 retry timer / backoff は core の責務ではなく caller が所有します。
+
+### Write authorization
+
+RLS に加えて `put_document` / `delete_document` は semantic vault role を先に検証します。
+
+```text
+owner/editor -> write/reconcile
+viewer       -> permission_denied
+non-member   -> permission_denied
+anon         -> RPC execute不可
+```
+
+これにより、viewer が現在stateを読めることを利用して exact-replay 判定から write 成功相当の結果を得る経路を防ぎます。
 
 ## Stable failure contract
 
@@ -156,6 +172,20 @@ unknown
 - provider-free detailed contract: TypeScript `*/machine/contracts` / `*/machine/ports`
 - architecture / Agent contract: Git Markdown / JSON
 - credentials: deployment secret store
+
+## Executable database contract
+
+`.github/workflows/database-contract.yml` では、GitHub-hosted Ubuntu 24.04 の PostgreSQL に対して、synthetic fixtureのみを使い次を実行します。
+
+```text
+synthetic auth bootstrap
+  -> all supabase/migrations/*.sql with ON_ERROR_STOP
+  -> document RLS/RPC acceptance
+```
+
+検証対象は owner/editor/viewer/authenticated outsider/anon、create/update replay、idempotency/path/version conflict、owner-only membership、delete read-back です。
+
+これはchecked-in SQLの実行証拠であり、本番Supabase projectのAuth設定・backup・monitoring・quota等を代替しません。
 
 ## Public design contracts
 
@@ -232,7 +262,7 @@ python -m unittest tests/test_architecture_check.py
 python tooling/architecture_check.py
 ```
 
-GitHub Actions ではさらに `codeql` と `dependency-vulnerability-scan` を実行します。
+GitHub Actions ではさらに `database-contract`、`codeql`、`dependency-vulnerability-scan` を実行します。
 
 ## Repository scope
 
@@ -241,6 +271,7 @@ GitHub Actions ではさらに `codeql` と `dependency-vulnerability-scan` を�
 - TypeScript Functional Core / Port / Adapter reference runtime
 - Supabase schema / RLS / semantic RPC migrations
 - stable provider-free document API
+- executable PostgreSQL migration/RLS/RPC acceptance
 - enterprise resilience/security baseline checks
 - public architecture contracts
 - reusable public Agent Skills

@@ -120,6 +120,19 @@ Create requires caller-generated stable document identity and returns version `1
 
 Read-back uses immutable document identity, not path.
 
+### Authorization before replay reconciliation
+
+RLS remains authoritative. In addition, database write RPCs explicitly require the semantic vault role to be `owner` or `editor` before mutation or exact-replay reconciliation begins.
+
+```text
+owner/editor -> write/reconcile allowed
+viewer       -> permission_denied
+non-member   -> permission_denied
+anon         -> no execute grant
+```
+
+This closes a subtle boundary where a read-authorized viewer could otherwise reach the post-update exact-replay check after RLS caused an update to affect zero rows. A matching already-committed state must never be interpreted as authorized write success for a non-writer.
+
 ### Retry semantics
 
 The database RPC is designed for ambiguous transport outcomes without adding a generic idempotency service.
@@ -259,6 +272,24 @@ The runtime toolchain is pinned at repository level:
 
 Dependabot proposes npm and GitHub Actions updates; updates still pass the same architecture/type/test/security gates.
 
+## Executable database verification
+
+Static inspection of SQL is not sufficient for the enterprise baseline. `.github/workflows/database-contract.yml` runs the checked-in migration set on PostgreSQL using synthetic fixtures only.
+
+```text
+GitHub Ubuntu 24.04 runner
+  -> start PostgreSQL
+  -> create isolated vault_ci database
+  -> bootstrap synthetic auth.users/auth.uid()
+  -> apply supabase/migrations/*.sql in lexical order
+     with ON_ERROR_STOP
+  -> execute document RLS/RPC acceptance SQL
+```
+
+The acceptance contract verifies owner/editor/viewer/authenticated-outsider/anon behavior plus create/update replay, semantic conflicts, owner-only membership administration, and same-ID delete read-back.
+
+The bootstrap is deliberately a small compatibility fixture, not an alternate Auth implementation and not a second production runtime.
+
 ## Verification
 
 Pure core:
@@ -279,6 +310,15 @@ Runtime:
 - same-ID read-back
 - mismatch fails closed
 
+Database contract:
+
+- every migration is executable in order
+- psql fails immediately on SQL errors
+- owner/editor/viewer/non-member/anon authorization boundaries
+- write authorization before replay reconciliation
+- idempotency/path/version conflict semantics
+- delete read-back
+
 Architecture checker:
 
 - TypeScript required paths
@@ -287,6 +327,8 @@ Architecture checker:
 - required semantic RPCs across versioned migrations
 - caller-generated create identity
 - idempotent create/update SQL invariants
+- explicit document writer guards
+- executable database workflow + acceptance fixture presence/invariants
 - exact direct dependencies / lockfile / `npm ci`
 - immutable workflow action pins
 - exact OSV scanner action pin
@@ -294,11 +336,11 @@ Architecture checker:
 - npm-audit fallback rejection
 - CodeQL / OSV dependency vulnerability scan / CODEOWNERS presence and minimum invariants
 
-CI runs strict TypeScript typecheck, Vitest and architecture checks. Separate workflows run CodeQL and the OSV dependency vulnerability scan.
+CI runs strict TypeScript typecheck, Vitest, architecture checks, executable database acceptance, CodeQL and the OSV dependency vulnerability scan.
 
 ## Enterprise deployment boundary
 
-Repository-level engineering controls do not replace organization-level operations, compliance, backup, monitoring, incident response or branch administration.
+Repository-level engineering controls do not replace organization-level operations, compliance, backup, monitoring, incident response, real-Supabase acceptance, or branch administration.
 
 See [`ENTERPRISE_READINESS.md`](ENTERPRISE_READINESS.md), [`REPOSITORY_GOVERNANCE.md`](REPOSITORY_GOVERNANCE.md), [`SECURITY_AUTOMATION.md`](SECURITY_AUTOMATION.md), and [`../SECURITY.md`](../SECURITY.md).
 
