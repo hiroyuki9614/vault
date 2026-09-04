@@ -7,7 +7,7 @@
 1. `vault.config.yml` を読む。
 2. schema / data boundary に触れる場合は `docs/ARCHITECTURE.md` と `supabase/README.md` を読む。
 3. SQL を変更する場合は既存 migration と public RPC contract を確認する。
-4. requirements / TDD / QA / security / Git safety / architecture boundary が material な場合だけ `.agents/SKILLS_INDEX.md` を読み、必要なSkillだけを読む。
+4. project initialization / requirement gap / impact analysis / design artifact / deployment diagnosis / requirements / TDD / QA / security / Git safety / architecture boundary が material な場合だけ `.agents/SKILLS_INDEX.md` を読み、必要なSkillだけを読む。
 5. 変更後は `python tooling/architecture_check.py` を実行する。
 
 全文走査、全Skill preload、追加review、追加gateを既定にしません。
@@ -15,6 +15,14 @@
 ## Skill boundary
 
 Public Skillは再利用可能なtask contractです。Skillの存在や`effects` metadataはmutation権限を付与しません。
+
+### Project lifecycle
+
+- `project-initialization`: foundation mode / responsibility boundary / readiness
+- `requirements-interview`: material requirement unknownだけを解消
+- `change-impact-analysis`: runtime/data pathを追い変更対象と確認対象を分類
+- `technical-design-document`: durable decisionのartifact ownerを選択
+- `deployment-diagnosis`: last success / first failure boundaryからdeploy障害を診断
 
 ### Development flow
 
