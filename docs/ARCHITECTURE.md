@@ -132,9 +132,9 @@ create(id=A, state=X)
   same path/different id -> path_conflict
 
 update(id=A, expected=N, state=Y)
-  first commit           -> A/version N+1
-  exact replay           -> same A/version N+1
-  divergent replay       -> version_conflict
+  first commit            -> A/version N+1
+  exact replay            -> same A/version N+1
+  divergent replay        -> version_conflict
 ```
 
 The runtime/core do not own retry timers. Caller owns retry cadence and delete reconciliation.
@@ -228,11 +228,12 @@ Repository security automation includes:
 
 - immutable commit SHA pinning for third-party GitHub Actions
 - CodeQL for JavaScript/TypeScript and Python with `security-extended`
-- source-enforced locked dependency audit with `npm audit --audit-level=high`
+- source-enforced OSV-Scanner scan of committed `package-lock.json`
+- dependency scan failure on any known vulnerability reported by OSV
 - Dependabot updates
 - CODEOWNERS declarations for security-critical boundaries
 
-GitHub Dependency Review is an optional graph-backed enhancement that requires Dependency Graph to be enabled in repository administration. GitHub-side rulesets and security-analysis settings remain administrator-managed state; they are not simulated by runtime code.
+The dependency gate does not depend on the npm Advisory API. GitHub Dependency Review is an optional graph-backed enhancement that requires Dependency Graph to be enabled in repository administration. GitHub-side rulesets and security-analysis settings remain administrator-managed state; they are not simulated by runtime code.
 
 ## Failure boundary
 
@@ -288,9 +289,12 @@ Architecture checker:
 - idempotent create/update SQL invariants
 - exact direct dependencies / lockfile / `npm ci`
 - immutable workflow action pins
-- CodeQL / dependency-audit / CODEOWNERS presence and minimum invariants
+- exact OSV scanner action pin
+- committed npm lockfile scan argument
+- npm-audit fallback rejection
+- CodeQL / OSV dependency vulnerability scan / CODEOWNERS presence and minimum invariants
 
-CI runs strict TypeScript typecheck, Vitest and architecture checks. Separate workflows run CodeQL and dependency audit.
+CI runs strict TypeScript typecheck, Vitest and architecture checks. Separate workflows run CodeQL and the OSV dependency vulnerability scan.
 
 ## Enterprise deployment boundary
 
