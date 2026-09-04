@@ -9,6 +9,10 @@ import {
   createDocumentService,
   DocumentReadBackMismatchError,
 } from '../documents/machine/runtime/document-service.js';
+import type { RecordMeasurementRunCommand } from '../measurement/public.js';
+import { createMeasurementService } from '../measurement/public.js';
+import { createSupabaseRpcMeasurementStore } from '../measurement/machine/adapters/supabase-rpc-measurement-store.js';
+import type { MeasurementNotRecordedCode } from '../measurement/machine/runtime/measurement-service.js';
 import type { VaultServerConfig } from './config.js';
 import { createSupabaseHttpRpcClient } from './supabase-http-rpc-client.js';
 
@@ -113,6 +117,29 @@ function optionalString(record: Readonly<Record<string, unknown>>, key: string):
   return value;
 }
 
+function optionalNumber(record: Readonly<Record<string, unknown>>, key: string): number | undefined {
+  const value = record[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number') throw new HttpInputError(400, 'invalid_request');
+  return value;
+}
+
+function optionalBoolean(record: Readonly<Record<string, unknown>>, key: string): boolean | undefined {
+  const value = record[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'boolean') throw new HttpInputError(400, 'invalid_request');
+  return value;
+}
+
+function optionalStringArray(record: Readonly<Record<string, unknown>>, key: string): readonly string[] | undefined {
+  const value = record[key];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string')) {
+    throw new HttpInputError(400, 'invalid_request');
+  }
+  return value as string[];
+}
+
 function optionalMetadata(record: Readonly<Record<string, unknown>>): JsonObject | undefined {
   const value = record.metadata;
   if (value === undefined) return undefined;
@@ -156,6 +183,50 @@ function deleteCommand(record: Readonly<Record<string, unknown>>): DeleteDocumen
   };
 }
 
+function measurementCommand(record: Readonly<Record<string, unknown>>): RecordMeasurementRunCommand {
+  const kind = requiredString(record, 'kind');
+  if (kind !== 'agent' && kind !== 'skill' && kind !== 'task') {
+    throw new HttpInputError(400, 'invalid_request');
+  }
+  const status = requiredString(record, 'status');
+  if (status !== 'completed' && status !== 'failed' && status !== 'blocked' && status !== 'cancelled') {
+    throw new HttpInputError(400, 'invalid_request');
+  }
+
+  const parentRunId = optionalString(record, 'parentRunId');
+  const taskType = optionalString(record, 'taskType');
+  const provider = optionalString(record, 'provider');
+  const model = optionalString(record, 'model');
+  const promptRef = optionalString(record, 'promptRef');
+  const skillIds = optionalStringArray(record, 'skillIds');
+  const inputTokens = optionalNumber(record, 'inputTokens');
+  const outputTokens = optionalNumber(record, 'outputTokens');
+  const costMicrousd = optionalNumber(record, 'costMicrousd');
+  const correctionCount = optionalNumber(record, 'correctionCount');
+  const humanIntervention = optionalBoolean(record, 'humanIntervention');
+
+  return {
+    id: requiredString(record, 'id'),
+    vaultId: requiredString(record, 'vaultId'),
+    ...(parentRunId === undefined ? {} : { parentRunId }),
+    kind,
+    name: requiredString(record, 'name'),
+    ...(taskType === undefined ? {} : { taskType }),
+    ...(provider === undefined ? {} : { provider }),
+    ...(model === undefined ? {} : { model }),
+    ...(promptRef === undefined ? {} : { promptRef }),
+    ...(skillIds === undefined ? {} : { skillIds }),
+    status,
+    startedAt: requiredString(record, 'startedAt'),
+    finishedAt: requiredString(record, 'finishedAt'),
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens }),
+    ...(costMicrousd === undefined ? {} : { costMicrousd }),
+    ...(correctionCount === undefined ? {} : { correctionCount }),
+    ...(humanIntervention === undefined ? {} : { humanIntervention }),
+  };
+}
+
 function statusForStoreError(error: DocumentStoreError): number {
   switch (error.code) {
     case 'not_found': return 404;
@@ -164,6 +235,19 @@ function statusForStoreError(error: DocumentStoreError): number {
     case 'path_conflict': return 409;
     case 'permission_denied': return 403;
     case 'unauthenticated': return 401;
+    case 'invalid_request': return 400;
+    case 'unavailable': return 503;
+    case 'invalid_response':
+    case 'unknown': return 502;
+  }
+}
+
+function statusForMeasurementFailure(code: MeasurementNotRecordedCode): number {
+  switch (code) {
+    case 'measurement_conflict': return 409;
+    case 'permission_denied': return 403;
+    case 'unauthenticated': return 401;
+    case 'invalid_measurement':
     case 'invalid_request': return 400;
     case 'unavailable': return 503;
     case 'invalid_response':
@@ -217,27 +301,42 @@ export function createVaultHttpServer(config: VaultServerConfig, dependencies: H
         timeoutMs: config.upstreamTimeoutMs,
         ...(dependencies.fetchFn === undefined ? {} : { fetchFn: dependencies.fetchFn }),
       });
-      const service = createDocumentService(createSupabaseRpcDocumentStore(rpcClient));
+      const documentService = createDocumentService(createSupabaseRpcDocumentStore(rpcClient));
 
+      if (path === '/v1/measurements/record') {
+        const measurementService = createMeasurementService(createSupabaseRpcMeasurementStore(rpcClient));
+        const measurement = await measurementService.record(measurementCommand(body));
+        if (measurement.status === 'not_recorded') {
+          sendJson(response, statusForMeasurementFailure(measurement.code), requestId, {
+            error: measurement.code,
+            retryable: measurement.retryable,
+            ...(measurement.field === undefined ? {} : { field: measurement.field }),
+            requestId,
+          });
+          return;
+        }
+        sendJson(response, 200, requestId, { measurement, requestId });
+        return;
+      }
       if (path === '/v1/documents/get-by-path') {
-        const document = await service.get(requiredString(body, 'vaultId'), requiredString(body, 'path'));
+        const document = await documentService.get(requiredString(body, 'vaultId'), requiredString(body, 'path'));
         if (document === null) throw new HttpInputError(404, 'not_found');
         sendJson(response, 200, requestId, { document, requestId });
         return;
       }
       if (path === '/v1/documents/get-by-id') {
-        const document = await service.getById(requiredString(body, 'vaultId'), requiredString(body, 'documentId'));
+        const document = await documentService.getById(requiredString(body, 'vaultId'), requiredString(body, 'documentId'));
         if (document === null) throw new HttpInputError(404, 'not_found');
         sendJson(response, 200, requestId, { document, requestId });
         return;
       }
       if (path === '/v1/documents/put') {
-        const document = await service.put(putCommand(body));
+        const document = await documentService.put(putCommand(body));
         sendJson(response, 200, requestId, { document, requestId });
         return;
       }
       if (path === '/v1/documents/delete') {
-        await service.delete(deleteCommand(body));
+        await documentService.delete(deleteCommand(body));
         sendEmpty(response, 204, requestId);
         return;
       }
