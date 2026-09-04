@@ -13,7 +13,7 @@ from tooling.architecture_check import check
 class ArchitectureCheckTest(unittest.TestCase):
     def copy_repo(self) -> Path:
         tmp = Path(tempfile.mkdtemp()) / "repo"
-        shutil.copytree(ROOT, tmp, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "node_modules"))
+        shutil.copytree(ROOT, tmp, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "node_modules", "dist"))
         self.addCleanup(lambda: shutil.rmtree(tmp.parent, ignore_errors=True))
         return tmp
 
@@ -179,6 +179,45 @@ class ArchitectureCheckTest(unittest.TestCase):
         public_api = repo / "documents" / "public.ts"
         public_api.write_text(public_api.read_text(encoding="utf-8") + "\n// Supabase\n", encoding="utf-8")
         self.assertTrue(any("public API must remain provider-free" in error for error in check(repo)))
+
+    def test_nginx_must_forward_authorization(self):
+        repo = self.copy_repo()
+        nginx = repo / "deploy" / "nginx" / "vault.conf.example"
+        nginx.write_text(
+            nginx.read_text(encoding="utf-8").replace(
+                "proxy_set_header Authorization $http_authorization;",
+                "# removed authorization forwarding",
+            ),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("Authorization" in error for error in check(repo)))
+
+    def test_server_default_bind_must_remain_loopback(self):
+        repo = self.copy_repo()
+        server_config = repo / "server" / "config.ts"
+        server_config.write_text(
+            server_config.read_text(encoding="utf-8").replace("'127.0.0.1'", "'0.0.0.0'", 1),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("127.0.0.1" in error for error in check(repo)))
+
+    def test_systemd_hardening_is_required(self):
+        repo = self.copy_repo()
+        unit = repo / "deploy" / "systemd" / "vault.service.example"
+        unit.write_text(
+            unit.read_text(encoding="utf-8").replace("NoNewPrivileges=true", "NoNewPrivileges=false"),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("NoNewPrivileges=true" in error for error in check(repo)))
+
+    def test_production_build_entrypoint_is_required(self):
+        repo = self.copy_repo()
+        package = repo / "package.json"
+        package.write_text(
+            package.read_text(encoding="utf-8").replace("node dist/server/main.js", "node server/main.js"),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("dist/server/main.js" in error for error in check(repo)))
 
 
 if __name__ == "__main__":
