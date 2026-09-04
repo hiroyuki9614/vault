@@ -6,8 +6,6 @@ Supabase を canonical data store にし、TypeScript の Functional Core / Effe
 
 ## Runtime architecture
 
-Public Vault の実装本体は TypeScript です。
-
 ```text
 Client / AI Agent
       |
@@ -31,8 +29,6 @@ Supabase Auth + RLS + PostgreSQL
 canonical Vault data
 ```
 
-v3 と同じ responsibility-first の分割を使います。
-
 ```text
 core/machine/
   main/repository.json
@@ -55,6 +51,8 @@ documents/
 - core は immutable input から validation / decision / effect plan を返します。
 - mutation は optimistic version check を使い、成功応答だけでは完了にしません。
 - create/update/delete は stable document ID を使って same-subject read-back します。
+- createはcaller-generated UUIDを必須にし、同一createの再送で重複rowを作りません。
+- updateも同一`expectedVersion`・同一最終状態の再送を同じcommit結果として扱います。
 - Supabase unavailable 時に GitHub Markdown へ write fallback しません。
 
 ## Enterprise engineering baseline
@@ -66,15 +64,20 @@ Repository-level baselineとして次を強制します。
 - semantic provider error mapping
 - optimistic concurrency
 - same-document-ID read-back
+- idempotent create / exact update replay
 - versioned SQL migrations
 - exact direct development dependencies
 - committed npm lockfile + `npm ci`
 - bounded CI execution
-- Dependabotによるnpm / GitHub Actions更新
+- GitHub Actions commit SHA pinning
+- CodeQL for JavaScript/TypeScript and Python
+- dependency review on pull requests
+- Dependabot for npm / GitHub Actions
+- CODEOWNERS for security-critical boundaries
 - Security reporting policy
 - architecture regression checks
 
-詳細とProduction導入前チェックは [`docs/ENTERPRISE_READINESS.md`](docs/ENTERPRISE_READINESS.md) を参照してください。
+詳細とProduction導入前チェックは [`docs/ENTERPRISE_READINESS.md`](docs/ENTERPRISE_READINESS.md) を参照してください。Repository管理設定は [`docs/REPOSITORY_GOVERNANCE.md`](docs/REPOSITORY_GOVERNANCE.md) を参照してください。
 
 これはSOC 2 / ISO 27001等の認証、SLA、managed backupを意味しません。Production organization側の責務も同文書で分離しています。
 
@@ -96,9 +99,22 @@ put_document
 delete_document
 ```
 
-を使用します。
+を使用します。`path` はmutable locator、`id` はstable identityです。
 
-`path` はmutable locator、`id` はstable identityです。
+### Retry-safe create
+
+Create commandは呼出側でUUIDを生成します。
+
+```ts
+{
+  kind: 'create',
+  id: '<stable-document-uuid>',
+  vaultId: '<vault-uuid>',
+  path: 'notes/example.md'
+}
+```
+
+通信結果が不明な場合に同じ`id`と同じ内容で再送すると、既にcommit済みならversion `1`の同じdocumentを返します。同じIDで内容が異なる場合は`idempotency_conflict`、同じpathを別IDで取得しようとした場合は`path_conflict`でfail closedします。
 
 ## Stable failure contract
 
@@ -107,6 +123,8 @@ Supabase/provider error objectを上位へそのまま返しません。Port境�
 ```text
 not_found
 version_conflict
+idempotency_conflict
+path_conflict
 permission_denied
 unauthenticated
 invalid_request
@@ -115,7 +133,7 @@ invalid_response
 unknown
 ```
 
-`unavailable`だけを既定でretryableとし、実際のretry policyはcallerが所有します。
+`unavailable`はtransport/infrastructure上retry可能な分類です。実際のretry/reconciliation policyはcallerが所有し、core自身はsleep/retryを行いません。
 
 ## Canonical boundaries
 
@@ -131,6 +149,7 @@ unknown
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — runtime / canonical / data boundary
 - [`docs/ENTERPRISE_READINESS.md`](docs/ENTERPRISE_READINESS.md) — enterprise engineering baseline / deployment checklist / non-claims
+- [`docs/REPOSITORY_GOVERNANCE.md`](docs/REPOSITORY_GOVERNANCE.md) — GitHub source/admin governance boundary
 - [`SECURITY.md`](SECURITY.md) — vulnerability reporting / deployment security boundary
 - [`docs/RESPONSIBILITY_BOUNDARIES.md`](docs/RESPONSIBILITY_BOUNDARIES.md) — Responsibility / Capability / Port / dependency boundary
 - [`docs/FUNCTIONAL_CORE_EFFECTFUL_ADAPTER.md`](docs/FUNCTIONAL_CORE_EFFECTFUL_ADAPTER.md) — pure decision logic と external I/O の分離
@@ -182,8 +201,6 @@ Supabase側は:
 
 ## Validation
 
-全体:
-
 ```bash
 npm run check
 ```
@@ -209,7 +226,7 @@ python tooling/architecture_check.py
 - TypeScript Functional Core / Port / Adapter reference runtime
 - Supabase schema / RLS / semantic RPC migrations
 - stable provider-free document API
-- enterprise engineering baseline checks
+- enterprise resilience/security baseline checks
 - public architecture contracts
 - reusable public Agent Skills
 
