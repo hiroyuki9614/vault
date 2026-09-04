@@ -32,4 +32,4 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Reject High/Critical dependency vulnerabilities
-        run: npm audit --audit-level=high
+        run: npm audit --audit-level=high --fetch-retries=1 --fetch-timeout=45000
