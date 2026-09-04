@@ -2,15 +2,15 @@
 
 ## Purpose
 
-この repository は private/personal Vault の実体ではなく、Supabase-first Vault を構築するための公開 Reference Implementation です。
+This repository is a public Supabase-first Vault Reference Implementation, not a private/personal Vault instance.
 
-Executable policy は TypeScript で実装し、v3 と同じ responsibility-first / Functional Core + Effectful Adapter 境界を使います。
+Executable policy is TypeScript and follows the same responsibility-first / Functional Core + Effectful Adapter structure used by Personal Vault v3.
 
 ```text
 Caller
   |
   v
-provider-free TypeScript contract
+provider-free TypeScript public API
   |
   v
 pure Functional Core
@@ -35,87 +35,68 @@ core/machine/main/repository.json
 core/machine/indexes/responsibilities.json
 ```
 
-`repository.json` は repository role / runtime language / database boundary / growth stopper を宣言します。
+`repository.json` declares repository role, runtime/toolchain, database boundary, enterprise baseline and growth stoppers.
 
-`responsibilities.json` は各 Capability の owner、public contract、implementation boundary、禁止責務を宣言します。
+`responsibilities.json` declares owner, public contract, implementation boundary and forbidden responsibilities for each Capability.
 
-固定された巨大layer treeやglobal orchestratorを前提にしません。必要な責務だけを追加します。
+No global orchestrator or fixed giant layer tree is required.
 
 ## Capability layout
 
-代表形:
+Representative shape:
 
 ```text
-<capability>/machine/
-  contracts/
-  core/
-  ports/
-  adapters/
-  runtime/
+<capability>/
+  public.ts
+  machine/
+    contracts/
+    core/
+    ports/
+    adapters/
+    runtime/
 ```
+
+### public.ts
+
+Stable provider-free entry surface for callers. Provider names/types must not leak into this file.
 
 ### contracts
 
-Provider-free な public TypeScript contract。
-
-- command
-- snapshot/result
-- semantic request
-- discriminated union
-
-Supabase SDK type、table row type、HTTP response typeを公開contractにしません。
+Provider-free TypeScript command/result/error contracts.
 
 ### core
 
-Pure TypeScript policy。
+Pure TypeScript policy:
 
 ```text
 explicit immutable input
   -> validation
   -> decision
-  -> normalized result / effect plan
+  -> normalized request / verification predicate
 ```
 
-原則として直接扱わないもの:
-
-- network
-- Supabase / database client
-- filesystem
-- process execution
-- environment lookup
-- wall clock
-- random source
-- deployment state
+Core does not directly access network, Supabase/database clients, filesystem, process execution, environment lookup, wall clock, random source or deployment state.
 
 ### ports
 
-Capabilityが必要とする外部effectを意味で表します。
+Semantic external-effect contracts, such as `DocumentStore`.
 
-Provider implementation detailではなく、`DocumentStore`のようなsemantic contractにします。
+Port errors are semantic. Provider error objects are not public contracts.
 
 ### adapters
 
-Provider固有effectを所有します。
-
-Public Vaultのdocuments CapabilityではSupabase RPC adapterが:
-
-- `get_document`
-- `put_document`
-- `delete_document`
-
-を呼び、RPC parameter / row shape / provider errorをcoreから隔離します。
+Provider-specific effects and response parsing. The Supabase document adapter owns RPC parameter mapping, row validation and provider-to-semantic error mapping.
 
 ### runtime
 
-Core / Port / Adapterをcompositionし、effect executionとread-backを行います。
+Composition and effect orchestration only. Business decisions remain in core.
 
-Business decisionをruntimeへ戻さず、runtimeはeffect orchestrationに留めます。
+## Documents Capability
 
-## Documents capability
-
-現在の最初の executable Capability。
+Current executable Capability:
 
 ```text
+documents/public.ts
 documents/machine/contracts/document.ts
 documents/machine/core/document-policy.ts
 documents/machine/ports/document-store.ts
@@ -123,18 +104,34 @@ documents/machine/adapters/supabase-rpc-document-store.ts
 documents/machine/runtime/document-service.ts
 ```
 
-Coreはcreate/update/deleteをpureなplanへ変換します。
+### Write path
 
 ```text
 PutDocumentCommand
-  -> planPutDocument()
-  -> PutDocumentRequest
-  -> DocumentStore.put()
-  -> getByPath() read-back
-  -> verifyPutReadBack()
+  -> planPutDocument()                pure
+  -> DocumentStore.put()              effect
+  -> verifyPutMutation()              pure
+  -> DocumentStore.getById()          effect
+  -> verifyPutReadBack()              pure
+  -> completed
 ```
 
-Deleteもmutation後にknown pathを同じsubjectとしてread-backし、absenceを確認します。
+Create mutation must return version `1`. Update mutation must return `expectedVersion + 1`.
+
+Read-back uses immutable document identity, not path.
+
+### Delete path
+
+```text
+DeleteDocumentCommand
+  -> planDeleteDocument()             pure
+  -> DocumentStore.delete()           effect
+  -> returned id must equal plan id
+  -> DocumentStore.getById()          effect
+  -> verifyDeleteReadBack()           pure
+```
+
+`path` remains a locator. It is not identity evidence.
 
 ## Canonical ownership
 
@@ -145,11 +142,14 @@ Mutable human/user data
 Executable domain policy
   -> TypeScript */machine/core
 
-Public capability contract
-  -> TypeScript */machine/contracts
+Public capability API
+  -> TypeScript <capability>/public.ts
+
+Provider-free detailed contracts
+  -> TypeScript */machine/contracts and */machine/ports
 
 Schema / RLS / RPC definition
-  -> Git migration history
+  -> versioned Git migration history
 
 Architecture / Agent contract
   -> Git Markdown / JSON
@@ -158,102 +158,113 @@ Credentials
   -> deployment secret store only
 ```
 
-GitHub と Supabase に同じ mutable document を独立更新可能な状態で持たせません。
-
-## Data model
-
-最小 model:
-
-```text
-auth.users
-    |
-    +---- vaults(owner_user_id)
-    |         |
-    |         +---- vault_members
-    |         |
-    |         +---- documents
-    |
-    +---- authenticated identity
-```
-
-### `documents`
-
-- `id`: stable UUID identity
-- `path`: mutable locator
-- `content`: Markdown/text body
-- `metadata`: JSONB
-- `version`: optimistic concurrency token
-
-`path` を変更しても `id` は変えません。
+GitHub and Supabase must not become independently mutable canonical stores for the same document.
 
 ## Semantic RPC boundary
 
-Supabaseは必須 data platform ですが、domain/public TypeScript contractはSupabaseを知りません。
-
-Adapterだけが次を知ります。
+The Supabase adapter currently maps:
 
 ```text
 get_document(vault_id, path)
+get_document_by_id(vault_id, document_id)
 put_document(vault_id, document_id, path, title, content, metadata, expected_version)
 delete_document(vault_id, document_id, expected_version)
 ```
 
-update の stale version は mutation せず `version_conflict` になります。
+`get_document_by_id` exists specifically so mutation completion can verify the same subject.
+
+## Stable error boundary
+
+Provider failures are normalized by the adapter to `DocumentStoreError`.
+
+Semantic codes:
+
+```text
+not_found
+version_conflict
+permission_denied
+unauthenticated
+invalid_request
+unavailable
+invalid_response
+unknown
+```
+
+Provider-specific error objects/messages do not cross the Port boundary. `unavailable` is retryable by default; retry policy is caller-owned.
 
 ## Security
 
-Supabase Auth + RLS を必須とします。
+Supabase Auth + RLS are mandatory.
 
-- owner: vault / member / document 管理
+- owner: vault/member/document administration
 - editor: document read/write
 - viewer: document read only
-- unauthenticated: data access不可
+- unauthenticated: no data access
 
-service-role key は migration/administration専用で、通常 runtime contractから除外します。
+Service-role credentials are administration/migration credentials and are excluded from normal runtime contracts.
 
 ## Failure boundary
 
-Supabase unavailable:
-
 ```text
-data operation unavailable
-  -> fail / surface unavailable
-  -> GitHubへfallback writeしない
-  -> second canonicalを作らない
+Supabase unavailable
+  -> semantic unavailable failure
+  -> no GitHub fallback write
+  -> no local second canonical
 ```
 
-Provider error objectをcore contractへ返しません。Adapter境界でprovider-specific errorとして隔離し、consumerが必要な意味へmappingします。
+Mutation transport success alone is not completion. Mutation result and same-ID read-back must match the planned state.
+
+## Build reproducibility
+
+The runtime toolchain is pinned at repository level:
+
+- Node.js 24 major line
+- npm 11 major line
+- exact direct dev dependency versions
+- committed `package-lock.json`
+- CI installs with `npm ci`
+
+Dependabot proposes npm and GitHub Actions updates; updates still pass the same architecture/type/test gates.
 
 ## Verification
 
 Pure core:
 
-- Vitest unit test
-- network mock不要
-- decision / validation / read-back predicateを確認
+- Vitest unit tests
+- no provider/network mocks required for policy
+- validation, effect planning and read-back predicates
 
 Adapter:
 
-- RPC name / parameter mapping
-- provider row mapping
-- provider error boundary
+- RPC name/parameter mapping
+- provider response validation
+- provider-to-semantic error mapping
 
 Runtime:
 
-- mutation後read-back
-- mismatch時fail closed
+- mutation result verification
+- same-ID read-back
+- mismatch fails closed
 
 Architecture checker:
 
-- TS runtime required paths
-- coreへのprovider/effect fragment混入防止
-- Supabase-first / RLS / RPC invariants
+- TypeScript required paths
+- provider/effect fragments forbidden in core
+- provider-free public API
+- required semantic RPCs across versioned migrations
+- exact direct dependencies / lockfile / `npm ci`
 
-CIはTypeScript typecheck + Vitest + Python architecture checkを実行します。
+CI runs strict TypeScript typecheck, Vitest and architecture checks.
 
-## Growth stopper
+## Enterprise deployment boundary
 
-この repository に次を追加しません。
+Repository-level engineering controls do not replace organization-level operations, compliance, backup, monitoring or incident response.
+
+See [`ENTERPRISE_READINESS.md`](ENTERPRISE_READINESS.md) and [`../SECURITY.md`](../SECURITY.md).
+
+## Growth stoppers
+
+Do not add without a Capability-specific need:
 
 - generic Work Context
 - universal ExecutionRunner
@@ -263,5 +274,3 @@ CIはTypeScript typecheck + Vitest + Python architecture checkを実行します
 - notification runtime
 - recovery broker
 - mandatory review-of-review stack
-
-Capability固有の必要性がない抽象化は追加しません。
