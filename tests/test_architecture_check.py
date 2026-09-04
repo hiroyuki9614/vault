@@ -50,14 +50,12 @@ class ArchitectureCheckTest(unittest.TestCase):
     def test_create_command_without_required_identity_fails(self):
         repo = self.copy_repo()
         contract = repo / "documents" / "machine" / "contracts" / "document.ts"
-        contract.write_text(
-            contract.read_text(encoding="utf-8").replace(
-                "readonly kind: 'create';\n      readonly id: string;",
-                "readonly kind: 'create';\n      readonly id?: string;",
-                1,
-            ),
-            encoding="utf-8",
-        )
+        original = contract.read_text(encoding="utf-8")
+        create_start = original.index("readonly kind: 'create';")
+        id_start = original.index("readonly id: string;", create_start)
+        mutated = original[:id_start] + "readonly id?: string;" + original[id_start + len("readonly id: string;"):]
+        self.assertNotEqual(original, mutated)
+        contract.write_text(mutated, encoding="utf-8")
         self.assertTrue(any("caller-generated document identity" in error for error in check(repo)))
 
     def test_provider_dependency_in_functional_core_fails(self):
