@@ -12,7 +12,7 @@ Public Vault の実装本体は TypeScript です。
 Client / AI Agent
       |
       v
-Document public contract
+documents/public.ts
       |
       v
 pure TypeScript core
@@ -38,12 +38,14 @@ core/machine/
   main/repository.json
   indexes/responsibilities.json
 
-documents/machine/
-  contracts/   # provider-free public contract
-  core/        # pure TypeScript policy
-  ports/       # semantic effect boundary
-  adapters/    # Supabase RPC mapping
-  runtime/     # composition + read-back
+documents/
+  public.ts    # provider-free public API
+  machine/
+    contracts/
+    core/      # pure TypeScript policy
+    ports/     # semantic effect / error boundary
+    adapters/  # Supabase RPC mapping
+    runtime/   # composition + same-ID read-back
 ```
 
 ### Functional rules
@@ -51,38 +53,88 @@ documents/machine/
 - `documents/machine/core` は pure function を基本とし、Supabase / env / filesystem / network を直接参照しません。
 - provider 固有の row shape / error / RPC parameter は adapter が吸収します。
 - core は immutable input から validation / decision / effect plan を返します。
-- mutation は optimistic version check を使い、adapter 実行後に same-subject read-back を行います。
+- mutation は optimistic version check を使い、成功応答だけでは完了にしません。
+- create/update/delete は stable document ID を使って same-subject read-back します。
 - Supabase unavailable 時に GitHub Markdown へ write fallback しません。
 
-## Documents capability
+## Enterprise engineering baseline
 
-現在の最初の executable Capability は `documents` です。
+Repository-level baselineとして次を強制します。
 
-- [`documents/machine/contracts/document.ts`](documents/machine/contracts/document.ts) — provider-free command / snapshot contract
-- [`documents/machine/core/document-policy.ts`](documents/machine/core/document-policy.ts) — create/update/delete plan と read-back判定
-- [`documents/machine/ports/document-store.ts`](documents/machine/ports/document-store.ts) — semantic persistence Port
-- [`documents/machine/adapters/supabase-rpc-document-store.ts`](documents/machine/adapters/supabase-rpc-document-store.ts) — `get_document / put_document / delete_document` RPC adapter
-- [`documents/machine/runtime/document-service.ts`](documents/machine/runtime/document-service.ts) — effect composition と read-back enforcement
+- strict TypeScript
+- provider-free public API
+- semantic provider error mapping
+- optimistic concurrency
+- same-document-ID read-back
+- versioned SQL migrations
+- exact direct development dependencies
+- committed npm lockfile + `npm ci`
+- bounded CI execution
+- Dependabotによるnpm / GitHub Actions更新
+- Security reporting policy
+- architecture regression checks
 
-Supabase の physical table shape は public TypeScript contract にしません。
+詳細とProduction導入前チェックは [`docs/ENTERPRISE_READINESS.md`](docs/ENTERPRISE_READINESS.md) を参照してください。
+
+これはSOC 2 / ISO 27001等の認証、SLA、managed backupを意味しません。Production organization側の責務も同文書で分離しています。
+
+## Documents Capability
+
+- [`documents/public.ts`](documents/public.ts) — provider-free stable entry surface
+- [`documents/machine/contracts/document.ts`](documents/machine/contracts/document.ts) — command / snapshot / validation contract
+- [`documents/machine/core/document-policy.ts`](documents/machine/core/document-policy.ts) — validation / effect plan / mutation-read-back predicate
+- [`documents/machine/ports/document-store.ts`](documents/machine/ports/document-store.ts) — semantic persistence + failure Port
+- [`documents/machine/adapters/supabase-rpc-document-store.ts`](documents/machine/adapters/supabase-rpc-document-store.ts) — semantic RPC adapter
+- [`documents/machine/runtime/document-service.ts`](documents/machine/runtime/document-service.ts) — effect composition と same-ID completion enforcement
+
+Supabase adapterは現在:
+
+```text
+get_document
+get_document_by_id
+put_document
+delete_document
+```
+
+を使用します。
+
+`path` はmutable locator、`id` はstable identityです。
+
+## Stable failure contract
+
+Supabase/provider error objectを上位へそのまま返しません。Port境界で次のsemantic codeへ変換します。
+
+```text
+not_found
+version_conflict
+permission_denied
+unauthenticated
+invalid_request
+unavailable
+invalid_response
+unknown
+```
+
+`unavailable`だけを既定でretryableとし、実際のretry policyはcallerが所有します。
 
 ## Canonical boundaries
 
 - mutable Vault data: Supabase PostgreSQL
 - schema / RLS / RPC: Git migration history
 - executable domain policy: TypeScript `*/machine/core`
-- public capability contract: TypeScript `*/machine/contracts`
+- public capability API: TypeScript `<capability>/public.ts`
+- provider-free detailed contract: TypeScript `*/machine/contracts` / `*/machine/ports`
 - architecture / Agent contract: Git Markdown / JSON
 - credentials: deployment secret store
-
-Document identity は UUID で固定し、`path` rename で identity を変えません。
 
 ## Public design contracts
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — runtime / canonical / data boundary
+- [`docs/ENTERPRISE_READINESS.md`](docs/ENTERPRISE_READINESS.md) — enterprise engineering baseline / deployment checklist / non-claims
+- [`SECURITY.md`](SECURITY.md) — vulnerability reporting / deployment security boundary
 - [`docs/RESPONSIBILITY_BOUNDARIES.md`](docs/RESPONSIBILITY_BOUNDARIES.md) — Responsibility / Capability / Port / dependency boundary
 - [`docs/FUNCTIONAL_CORE_EFFECTFUL_ADAPTER.md`](docs/FUNCTIONAL_CORE_EFFECTFUL_ADAPTER.md) — pure decision logic と external I/O の分離
-- [`docs/SKILL_DISTILLATION.md`](docs/SKILL_DISTILLATION.md) — Agent Skill を type / trait / 固有semanticへ蒸留するcontract
+- [`docs/SKILL_DISTILLATION.md`](docs/SKILL_DISTILLATION.md) — Agent Skill distillation contract
 
 ## Public Agent Skills
 
@@ -112,19 +164,21 @@ Document identity は UUID で固定し、`path` rename で identity を変え�
 
 ## Quick start
 
+Node.js 24 / npm 11を使用します。
+
 ```bash
-npm install
+npm ci
 npm run check:ts
 ```
 
 Supabase側は:
 
-1. Supabase project を作成
-2. Supabase CLI で project を link
-3. `supabase/migrations/` を適用
-4. application側で `SUPABASE_URL` と publishable/anon key を注入
-5. Supabase Auth で認証
-6. TypeScript runtime から Supabase RPC adapter を composition
+1. environmentごとにSupabase projectを分離
+2. Supabase CLIで対象projectをlink
+3. `supabase/migrations/`を順番に適用
+4. application側で`SUPABASE_URL`とpublishable/anon keyを注入
+5. Supabase Authで認証
+6. TypeScript runtimeからSupabase RPC adapterをcomposition
 
 ## Validation
 
@@ -154,9 +208,10 @@ python tooling/architecture_check.py
 
 - TypeScript Functional Core / Port / Adapter reference runtime
 - Supabase schema / RLS / semantic RPC migrations
+- stable provider-free document API
+- enterprise engineering baseline checks
 - public architecture contracts
 - reusable public Agent Skills
-- architecture regression checks
 
 含まないもの:
 
@@ -164,5 +219,11 @@ python tooling/architecture_check.py
 - shared/private Vault の mirror
 - credential / secret
 - GitHub data fallback
+- managed backup / monitoring / SLA
+- compliance certification
 - VPS / scheduler / notification runtime
 - generic Control Plane / Work Context / recovery machinery
+
+## External reuse licensing
+
+Engineering上の企業利用baselineとは別に、第三者が商用再利用できる明示的なLICENSEはrepository ownerが意図的に選ぶ必要があります。法的・事業上の判断なので、この自動化ではlicenseを勝手に追加しません。
