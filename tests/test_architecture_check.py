@@ -180,17 +180,82 @@ class ArchitectureCheckTest(unittest.TestCase):
         public_api.write_text(public_api.read_text(encoding="utf-8") + "\n// Supabase\n", encoding="utf-8")
         self.assertTrue(any("public API must remain provider-free" in error for error in check(repo)))
 
-    def test_nginx_must_forward_authorization(self):
+    def test_apache_must_forward_authorization(self):
         repo = self.copy_repo()
-        nginx = repo / "deploy" / "nginx" / "vault.conf.example"
-        nginx.write_text(
-            nginx.read_text(encoding="utf-8").replace(
-                "proxy_set_header Authorization $http_authorization;",
+        apache = repo / "deploy" / "apache" / "vault.conf.example"
+        apache.write_text(
+            apache.read_text(encoding="utf-8").replace(
+                'RequestHeader set Authorization "%{VAULT_AUTHORIZATION}e" env=VAULT_AUTHORIZATION',
                 "# removed authorization forwarding",
             ),
             encoding="utf-8",
         )
         self.assertTrue(any("Authorization" in error for error in check(repo)))
+
+    def test_apache_must_keep_forward_proxy_disabled(self):
+        repo = self.copy_repo()
+        apache = repo / "deploy" / "apache" / "vault.conf.example"
+        apache.write_text(
+            apache.read_text(encoding="utf-8").replace("ProxyRequests Off", "ProxyRequests On", 1),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("forward proxy" in error or "ProxyRequests Off" in error for error in check(repo)))
+
+    def test_apache_must_proxy_to_loopback(self):
+        repo = self.copy_repo()
+        apache = repo / "deploy" / "apache" / "vault.conf.example"
+        apache.write_text(
+            apache.read_text(encoding="utf-8").replace("127.0.0.1:3100", "0.0.0.0:3100"),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("loopback Node upstream" in error for error in check(repo)))
+
+    def test_apache_redirect_must_use_fixed_host(self):
+        repo = self.copy_repo()
+        apache = repo / "deploy" / "apache" / "vault.conf.example"
+        apache.write_text(
+            apache.read_text(encoding="utf-8").replace(
+                "Redirect permanent / https://vault.example.com/",
+                "Redirect permanent / https://untrusted.invalid/",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("Redirect permanent / https://vault.example.com/" in error for error in check(repo)))
+
+    def test_apache_vhost_must_not_define_server_tokens(self):
+        repo = self.copy_repo()
+        apache = repo / "deploy" / "apache" / "vault.conf.example"
+        apache.write_text(apache.read_text(encoding="utf-8") + "\nServerTokens Prod\n", encoding="utf-8")
+        self.assertTrue(any("server-global ServerTokens" in error for error in check(repo)))
+
+    def test_architecture_workflow_requires_apache_configtest(self):
+        repo = self.copy_repo()
+        workflow = repo / ".github" / "workflows" / "architecture.yml"
+        workflow.write_text(
+            workflow.read_text(encoding="utf-8").replace("sudo apachectl configtest", "# removed configtest", 1),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("apachectl configtest" in error for error in check(repo)))
+
+    def test_architecture_workflow_requires_apache_bearer_smoke(self):
+        repo = self.copy_repo()
+        workflow = repo / ".github" / "workflows" / "architecture.yml"
+        workflow.write_text(
+            workflow.read_text(encoding="utf-8").replace(
+                "Authorization: Bearer synthetic-ci-token",
+                "X-Removed-Authorization: synthetic-ci-token",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("Authorization: Bearer synthetic-ci-token" in error for error in check(repo)))
+
+    def test_superseded_nginx_artifact_fails(self):
+        repo = self.copy_repo()
+        stale = repo / "docs" / "NGINX_DEPLOYMENT.md"
+        stale.write_text("superseded", encoding="utf-8")
+        self.assertTrue(any("superseded Nginx artifact" in error for error in check(repo)))
 
     def test_server_default_bind_must_remain_loopback(self):
         repo = self.copy_repo()
