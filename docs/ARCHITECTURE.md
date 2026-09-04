@@ -126,15 +126,15 @@ The database RPC is designed for ambiguous transport outcomes without adding a g
 
 ```text
 create(id=A, state=X)
-  first commit          -> A/version 1
-  exact replay          -> same A/version 1
-  same A/different state-> idempotency_conflict
-  same path/different id-> path_conflict
+  first commit           -> A/version 1
+  exact replay           -> same A/version 1
+  same A/different state -> idempotency_conflict
+  same path/different id -> path_conflict
 
 update(id=A, expected=N, state=Y)
-  first commit          -> A/version N+1
-  exact replay          -> same A/version N+1
-  divergent replay      -> version_conflict
+  first commit           -> A/version N+1
+  exact replay           -> same A/version N+1
+  divergent replay       -> version_conflict
 ```
 
 The runtime/core do not own retry timers. Caller owns retry cadence and delete reconciliation.
@@ -228,11 +228,11 @@ Repository security automation includes:
 
 - immutable commit SHA pinning for third-party GitHub Actions
 - CodeQL for JavaScript/TypeScript and Python with `security-extended`
-- pull-request dependency review
+- source-enforced locked dependency audit with `npm audit --audit-level=high`
 - Dependabot updates
 - CODEOWNERS declarations for security-critical boundaries
 
-GitHub-side rulesets remain administrator-managed state; they are not simulated by runtime code.
+GitHub Dependency Review is an optional graph-backed enhancement that requires Dependency Graph to be enabled in repository administration. GitHub-side rulesets and security-analysis settings remain administrator-managed state; they are not simulated by runtime code.
 
 ## Failure boundary
 
@@ -288,15 +288,15 @@ Architecture checker:
 - idempotent create/update SQL invariants
 - exact direct dependencies / lockfile / `npm ci`
 - immutable workflow action pins
-- CodeQL / dependency-review / CODEOWNERS presence and minimum invariants
+- CodeQL / dependency-audit / CODEOWNERS presence and minimum invariants
 
-CI runs strict TypeScript typecheck, Vitest and architecture checks. Separate workflows run CodeQL and dependency review.
+CI runs strict TypeScript typecheck, Vitest and architecture checks. Separate workflows run CodeQL and dependency audit.
 
 ## Enterprise deployment boundary
 
 Repository-level engineering controls do not replace organization-level operations, compliance, backup, monitoring, incident response or branch administration.
 
-See [`ENTERPRISE_READINESS.md`](ENTERPRISE_READINESS.md), [`REPOSITORY_GOVERNANCE.md`](REPOSITORY_GOVERNANCE.md), and [`../SECURITY.md`](../SECURITY.md).
+See [`ENTERPRISE_READINESS.md`](ENTERPRISE_READINESS.md), [`REPOSITORY_GOVERNANCE.md`](REPOSITORY_GOVERNANCE.md), [`SECURITY_AUTOMATION.md`](SECURITY_AUTOMATION.md), and [`../SECURITY.md`](../SECURITY.md).
 
 ## Growth stoppers
 
