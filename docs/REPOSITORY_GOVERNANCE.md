@@ -15,6 +15,7 @@ The repository itself enforces or declares:
 - bounded workflow execution time
 - deterministic `npm ci`
 - strict TypeScript / Vitest / architecture checks
+- executable PostgreSQL migration + RLS/RPC acceptance with synthetic identities
 - CodeQL analysis for JavaScript/TypeScript and Python
 - OSV-Scanner against the committed `package-lock.json`, failing on any known vulnerability
 - Dependabot updates
@@ -23,6 +24,7 @@ The repository itself enforces or declares:
 - versioned Supabase migrations
 - same-identity mutation verification
 - caller-generated document identity and idempotent exact put replay
+- explicit owner/editor authorization before document write replay reconciliation
 
 ## GitHub administrator controls
 
@@ -32,14 +34,15 @@ Recommended minimum:
 
 1. Require pull requests before merging.
 2. Require the repository's `architecture` check.
-3. Require the `dependency-vulnerability-scan` check.
-4. Require CodeQL checks appropriate to the changed languages / organization policy.
-5. Block force pushes.
-6. Block branch deletion.
-7. Require the branch to be up to date before merge when strict merge-head verification is desired.
-8. Restrict bypass to a small break-glass administrator set.
-9. Require at least one independent approval for multi-maintainer production use.
-10. Require CODEOWNERS review for security-critical paths when there is an independent eligible reviewer.
+3. Require the `database-contract` check for all changes that can affect migrations/RLS/RPC behavior; requiring it for every PR is the simpler safe default.
+4. Require the `dependency-vulnerability-scan` check.
+5. Require CodeQL checks appropriate to the changed languages / organization policy.
+6. Block force pushes.
+7. Block branch deletion.
+8. Require the branch to be up to date before merge when strict merge-head verification is desired.
+9. Restrict bypass to a small break-glass administrator set.
+10. Require at least one independent approval for multi-maintainer production use.
+11. Require CODEOWNERS review for security-critical paths when there is an independent eligible reviewer.
 
 For a single-maintainer reference repository, rules that require a second human reviewer can make all maintenance impossible. The production organization, not this public reference repository, owns that staffing/policy decision.
 
@@ -55,6 +58,12 @@ GitHub-side features are separately administered state. Recommended production s
 - require signed commits or vigilant mode when organizational policy requires it.
 
 The current public reference repository enforces an OSV lockfile scan entirely from source even when Dependency Graph is not enabled. GitHub Dependency Review is an additional graph-backed control, not a substitute for the source-enforced OSV scan.
+
+## Database contract boundary
+
+`database-contract` is source-controlled and uses only synthetic identities/content. It starts PostgreSQL on the GitHub-hosted Ubuntu 24.04 runner, bootstraps the minimum Auth compatibility surface required by the migrations, applies every migration in order with `ON_ERROR_STOP`, and executes the document authorization/RPC acceptance suite.
+
+This proves the checked-in SQL works on PostgreSQL and that the modeled owner/editor/viewer/outsider/anon boundaries behave as expected. It does **not** replace acceptance against the organization's real Supabase project, Auth configuration, quotas, network policy, backup configuration, or platform-specific settings.
 
 ## Recommended repository options
 
