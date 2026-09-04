@@ -8,6 +8,8 @@ The source repository must remain useful when copied to another GitHub organizat
 
 The intended `main` ruleset is declared in [`config/github-main-ruleset-contract.json`](../config/github-main-ruleset-contract.json). Release-tag governance is declared in [`config/github-release-tag-ruleset-contract.json`](../config/github-release-tag-ruleset-contract.json). These files are source-controlled governance contracts, **not** proof that GitHub administrator settings are active.
 
+Administrator application is documented in [`docs/GITHUB_RULESET_ADMIN_APPLY.md`](GITHUB_RULESET_ADMIN_APPLY.md). `tooling/github_ruleset_admin_helper.py` deterministically renders GitHub REST payloads from the two contracts, but deliberately performs no GitHub mutation itself.
+
 ## Source-enforced controls
 
 The repository itself enforces or declares:
@@ -33,6 +35,7 @@ The repository itself enforces or declares:
 - explicit owner/editor authorization before document write replay reconciliation
 - machine-readable intended `main` and `v*` release-tag ruleset contracts
 - a governance checker that fails when required workflow contexts or release-tag governance drift from those contracts
+- a non-mutating administrator payload renderer covered by CI regressions
 
 ## GitHub administrator controls: main
 
@@ -81,6 +84,14 @@ Required contexts:
   CodeQL (python)
 ```
 
+The exact REST payload can be rendered from source with:
+
+```bash
+python tooling/github_ruleset_admin_helper.py \
+  --output-dir .ruleset-payloads \
+  --print-apply-commands
+```
+
 For an organization production fork, change approvals to at least `1`, require CODEOWNERS review when an eligible independent reviewer exists, and keep bypass actors limited to documented break-glass administrators.
 
 ## GitHub administrator controls: release tags
@@ -99,9 +110,9 @@ Restrict deletions: yes
 Bypass: release or break-glass administrators only
 ```
 
-This limits who can declare a release, prevents ordinary writers from moving an existing version tag to a different commit, and prevents ordinary deletion of published release identity. See `docs/RELEASE_TAG_GOVERNANCE.md` for the source/runtime split and verification procedure.
+This limits who can declare a release, prevents ordinary writers from moving an existing version tag to a different commit, and prevents ordinary deletion of published release identity. See `docs/RELEASE_TAG_GOVERNANCE.md` for the source/runtime split and verification procedure. The same administrator helper renders the corresponding tag-ruleset REST payload.
 
-After applying either ruleset, verify the repository ruleset API or GitHub UI shows the intended active state. Source files must never claim the administrator state is active unless it has been separately read back.
+After applying either ruleset, verify the repository ruleset API or GitHub UI shows the intended active state. Source files and rendered payloads must never be treated as proof that the administrator state is active; read-back and behavioral acceptance remain separate evidence.
 
 ## GitHub security settings
 
@@ -141,7 +152,7 @@ For a production fork or internal repository:
 
 Repository rulesets and GitHub security-analysis settings are administrative state. They are not represented by Markdown, TypeScript, Supabase migrations, or Agent Skills and must not be simulated by a custom Control Plane.
 
-`config/github-main-ruleset-contract.json` and `config/github-release-tag-ruleset-contract.json` express intended state only. `tooling/github_governance_check.py` verifies that the declarations still correspond to source-controlled workflow and release contracts; it deliberately does not pretend to verify GitHub administrator state.
+`config/github-main-ruleset-contract.json` and `config/github-release-tag-ruleset-contract.json` express intended state only. `tooling/github_governance_check.py` verifies that the declarations still correspond to source-controlled workflow and release contracts. `tooling/github_ruleset_admin_helper.py` converts those declarations into reviewable REST payloads. Neither tool pretends to verify or mutate GitHub administrator state.
 
 ## Break-glass principle
 
