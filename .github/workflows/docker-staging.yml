@@ -26,7 +26,10 @@ jobs:
           persist-credentials: false
 
       - name: Validate Compose model
-        run: docker compose -f deploy/docker/compose.staging.yml config --quiet
+        run: |
+          docker compose -f deploy/docker/compose.staging.yml config --quiet
+          docker compose -f deploy/docker/compose.staging.yml config > /tmp/vault-compose-rendered.yml
+          grep -A8 -B2 'target: 8080' /tmp/vault-compose-rendered.yml
 
       - name: Build staging images
         run: docker compose -f deploy/docker/compose.staging.yml build --pull
@@ -41,6 +44,13 @@ jobs:
           diagnostics() {
             echo '--- docker compose ps ---' >&2
             "${compose[@]}" ps >&2 || true
+            apache_id=$("${compose[@]}" ps -q apache 2>/dev/null || true)
+            if [ -n "$apache_id" ]; then
+              echo '--- apache port bindings ---' >&2
+              docker inspect --format '{{json .HostConfig.PortBindings}} {{json .NetworkSettings.Ports}}' "$apache_id" >&2 || true
+            fi
+            echo '--- rendered compose ports ---' >&2
+            grep -A8 -B2 'target: 8080' /tmp/vault-compose-rendered.yml >&2 || true
             echo '--- docker compose logs ---' >&2
             "${compose[@]}" logs --no-color --tail=200 apache vault-node >&2 || true
           }
