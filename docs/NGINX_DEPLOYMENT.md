@@ -42,7 +42,7 @@ Authorization: Bearer <Supabase user access token>
 
 The Node adapter forwards that user access token to the named semantic Supabase RPC together with the configured publishable/anon key. Supabase Auth + RLS remain authoritative.
 
-Do not log or persist the Authorization header, Supabase key, or user token.
+Do not log or persist the Authorization header, Supabase key, user token, or request body.
 
 ## Build
 
@@ -54,7 +54,7 @@ npm run check
 npm run build
 ```
 
-Production output is written to `dist/`.
+Production output is written to `dist/` and is intentionally not committed. CI builds the same output, starts `dist/server/main.js`, checks loopback liveness, sends SIGTERM, and requires a clean shutdown.
 
 ## Runtime environment
 
@@ -116,7 +116,7 @@ Reference configuration:
 deploy/nginx/vault.conf.example
 ```
 
-Replace `vault.example.com` and certificate paths for the target environment, then validate before reload:
+Replace every `vault.example.com` occurrence and the certificate paths for the target environment, then validate before reload:
 
 ```bash
 sudo nginx -t
@@ -126,9 +126,11 @@ sudo systemctl reload nginx
 The reference config:
 
 - terminates TLS at Nginx;
+- redirects HTTP to the configured canonical hostname rather than reflecting the incoming Host header;
 - proxies only `/v1/` and health endpoints to `127.0.0.1:3100`;
 - explicitly forwards `Authorization`;
 - overwrites forwarding/request-id headers at the trusted proxy boundary;
+- clears the upstream `Connection` header so the configured HTTP/1.1 keepalive pool is usable;
 - limits request bodies to 1 MiB;
 - bounds connect/send/read timeouts;
 - returns 404 for other paths.
@@ -154,6 +156,8 @@ POST /v1/documents/get-by-id
 POST /v1/documents/put
 POST /v1/documents/delete
 ```
+
+Authenticated POST requests must use `Content-Type: application/json` and stay within the configured body limit.
 
 Example identity read:
 
@@ -192,11 +196,14 @@ Before routing production traffic, verify:
 3. `curl http://127.0.0.1:3100/health/live` succeeds on the host.
 4. port `3100` is not externally reachable.
 5. `nginx -t` succeeds before reload.
-6. HTTPS health through Nginx succeeds.
-7. anonymous `/v1/*` returns 401.
-8. owner/editor/viewer RLS behavior matches the database contract.
-9. request logs contain request IDs but no Authorization/token/key values.
-10. Supabase outage returns a bounded 503 rather than creating a second canonical store.
+6. HTTP redirects to the intended fixed production hostname.
+7. HTTPS health through Nginx succeeds.
+8. anonymous `/v1/*` returns 401.
+9. non-JSON authenticated POST returns 415.
+10. owner/editor/viewer RLS behavior matches the database contract.
+11. request logs contain request IDs but no Authorization/token/key/body values.
+12. Supabase outage returns a bounded 503 rather than creating a second canonical store.
+13. SIGTERM stops the Node service cleanly through systemd.
 
 ## Organization-owned controls
 
