@@ -40,9 +40,10 @@ describe('document policy', () => {
     });
   });
 
-  it('plans create without effectful dependencies', () => {
+  it('plans create with caller-supplied stable identity', () => {
     const plan = planPutDocument({
       kind: 'create',
+      id: DOCUMENT_ID,
       vaultId: VAULT_ID,
       path: 'notes/hello.md',
     });
@@ -51,7 +52,7 @@ describe('document policy', () => {
       kind: 'put',
       request: {
         vaultId: VAULT_ID,
-        documentId: null,
+        documentId: DOCUMENT_ID,
         path: 'notes/hello.md',
         title: '',
         content: '',
@@ -65,6 +66,7 @@ describe('document policy', () => {
     const failure = () =>
       planPutDocument({
         kind: 'create',
+        id: DOCUMENT_ID,
         vaultId: VAULT_ID,
         path: '   ',
       });
@@ -77,11 +79,23 @@ describe('document policy', () => {
     }
   });
 
+  it('rejects invalid create identity before an adapter is involved', () => {
+    expect(() =>
+      planPutDocument({
+        kind: 'create',
+        id: 'not-a-uuid',
+        vaultId: VAULT_ID,
+        path: 'notes/a.md',
+      }),
+    ).toThrowError(/id must be a UUID/);
+  });
+
   it('rejects non-JSON metadata at runtime', () => {
     const invalid = { value: Number.NaN } as unknown as Record<string, never>;
     expect(() =>
       planPutDocument({
         kind: 'create',
+        id: DOCUMENT_ID,
         vaultId: VAULT_ID,
         path: 'notes/a.md',
         metadata: invalid,
@@ -89,9 +103,10 @@ describe('document policy', () => {
     ).toThrowError(/finite JSON numbers/);
   });
 
-  it('requires create mutation version 1 and update mutation version +1', () => {
+  it('requires exact create identity/version and update version +1', () => {
     const createPlan = planPutDocument({
       kind: 'create',
+      id: DOCUMENT_ID,
       vaultId: VAULT_ID,
       path: 'notes/a.md',
       title: 'A',
@@ -103,6 +118,12 @@ describe('document policy', () => {
     const created = snapshot({ version: 1 });
     expect(verifyPutMutation(createPlan, created)).toBe(true);
     expect(verifyPutMutation(createPlan, { ...created, version: 2 })).toBe(false);
+    expect(
+      verifyPutMutation(createPlan, {
+        ...created,
+        id: '33333333-3333-4333-8333-333333333333',
+      }),
+    ).toBe(false);
 
     const updatePlan = planPutDocument({
       kind: 'update',
@@ -116,13 +137,19 @@ describe('document policy', () => {
     });
     if (updatePlan.kind !== 'put') throw new Error('unexpected plan');
     expect(verifyPutMutation(updatePlan, snapshot())).toBe(true);
-    expect(verifyPutMutation(updatePlan, snapshot({ id: '33333333-3333-4333-8333-333333333333' }))).toBe(false);
+    expect(
+      verifyPutMutation(updatePlan, snapshot({ id: '33333333-3333-4333-8333-333333333333' })),
+    ).toBe(false);
   });
 
   it('requires same identity and state on read-back', () => {
     const mutation = snapshot();
-    expect(verifyPutReadBack(mutation, snapshot({ metadata: { nested: { y: null, x: true }, a: 1 } }))).toBe(true);
-    expect(verifyPutReadBack(mutation, snapshot({ id: '33333333-3333-4333-8333-333333333333' }))).toBe(false);
+    expect(
+      verifyPutReadBack(mutation, snapshot({ metadata: { nested: { y: null, x: true }, a: 1 } })),
+    ).toBe(true);
+    expect(
+      verifyPutReadBack(mutation, snapshot({ id: '33333333-3333-4333-8333-333333333333' })),
+    ).toBe(false);
     expect(verifyPutReadBack(mutation, null)).toBe(false);
   });
 
