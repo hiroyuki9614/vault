@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "config" / "architecture.json"
 ACTION_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 USES_LINE_RE = re.compile(r"^-?\s*uses:\s*([^#\s]+)")
+OSV_SCANNER_ACTION = "google/osv-scanner-action/osv-scanner-action@baa4139e56d6312335d899e6ba045fa16d1d3d0b"
 
 
 def load_config() -> dict:
@@ -30,7 +31,7 @@ def check(root: Path = ROOT) -> list[str]:
     if config.get("semantic_store_errors_required") is not True: errors.append("semantic_store_errors_required must be true")
     if config.get("pinned_workflow_actions_required") is not True: errors.append("pinned_workflow_actions_required must be true")
     if config.get("code_scanning_workflow_required") is not True: errors.append("code_scanning_workflow_required must be true")
-    if config.get("dependency_audit_workflow_required") is not True: errors.append("dependency_audit_workflow_required must be true")
+    if config.get("dependency_vulnerability_scan_required") is not True: errors.append("dependency_vulnerability_scan_required must be true")
 
     for path in config.get("required_paths", []):
         if not (root / path).exists(): errors.append(f"missing required path: {path}")
@@ -75,13 +76,17 @@ def check(root: Path = ROOT) -> list[str]:
         for fragment in ("javascript-typescript", "python", "security-extended", "security-events: write"):
             if fragment not in text: errors.append(f"CodeQL workflow missing invariant: {fragment}")
 
-    dependency_audit_workflow = workflows_root / "dependency-audit.yml"
-    if dependency_audit_workflow.exists():
-        text = dependency_audit_workflow.read_text(encoding="utf-8")
-        if "npm audit --audit-level=high" not in text:
-            errors.append("dependency audit must reject high severity or above")
-        if "npm ci" not in text:
-            errors.append("dependency audit must install from the committed lockfile")
+    dependency_scan_workflow = workflows_root / "dependency-vulnerability-scan.yml"
+    if dependency_scan_workflow.exists():
+        text = dependency_scan_workflow.read_text(encoding="utf-8")
+        if OSV_SCANNER_ACTION not in text:
+            errors.append("dependency vulnerability scan must use the pinned OSV scanner action")
+        if "--lockfile=package-lock.json" not in text:
+            errors.append("dependency vulnerability scan must scan the committed npm lockfile")
+        if "persist-credentials: false" not in text:
+            errors.append("dependency vulnerability scan checkout must not persist credentials")
+        if "npm audit" in text:
+            errors.append("dependency vulnerability scan must not depend on npm audit")
 
     core_root = root / "documents" / "machine" / "core"
     if core_root.exists():
