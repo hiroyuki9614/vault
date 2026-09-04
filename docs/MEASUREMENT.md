@@ -50,7 +50,21 @@ RecordMeasurementRunCommand
   -> measurement_runs
 ```
 
-The pure core validates identity, bounded semantic labels, RFC3339 timestamps, parent/self relationship, metrics, and derives duration without reading a clock.
+The pure core validates identity, bounded semantic labels, RFC3339 timestamps, parent/self relationship, metrics, normalizes timestamps to canonical UTC ISO strings, and derives duration without reading a clock.
+
+## HTTP boundary
+
+The Node runtime exposes one bounded measurement write endpoint:
+
+```text
+POST /v1/measurements/record
+```
+
+It uses the same caller Bearer identity and publishable/anon-key transport as the Document API, then calls the named `record_measurement_run` RPC. It is not a generic Supabase proxy.
+
+The HTTP request accepts only the provider-free Measurement command fields. Raw prompt/input/output bodies have no Measurement field and are not forwarded by the endpoint.
+
+A successful record returns HTTP 200 with `measurement.status = recorded`. Validation, authorization, conflict, and upstream failures are mapped to bounded HTTP errors. The subject operation remains responsible for treating telemetry as optional; callers must not retroactively fail successful subject work because this separate telemetry call failed.
 
 ## Best-effort runtime
 
@@ -75,6 +89,7 @@ The caller decides whether to retry telemetry. No retry timer/backoff is owned b
 - normal runtime uses caller identity, not service-role credentials;
 - exact replay of the same run ID and state returns the existing row;
 - the same run ID with different state raises `measurement_conflict`;
+- duration must match the difference between normalized start/end timestamps;
 - update/delete are not granted to normal authenticated callers.
 
 Measurement is telemetry, not business-state canonical completion, so it does not require the extra same-ID read-back round trip used by Document mutation completion.
