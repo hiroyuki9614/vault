@@ -26,6 +26,13 @@ The current baseline requires:
 - executable PostgreSQL migration + RLS/RPC acceptance using synthetic identities
 - exact direct development dependency versions
 - committed npm lockfile and `npm ci` in CI
+- production TypeScript emit plus built-entrypoint startup/shutdown smoke
+- loopback-only Node bind by default for Nginx deployments
+- bounded request body, header, request, upstream and shutdown timeouts
+- bearer-scoped Supabase RPC transport using the caller identity
+- no Supabase service-role credential in the normal HTTP runtime contract
+- Nginx reverse-proxy reference configuration
+- hardened systemd reference unit
 - bounded CI execution time
 - GitHub Actions pinned to immutable commits
 - CodeQL for JavaScript/TypeScript and Python
@@ -107,6 +114,8 @@ Provider-specific errors are mapped at the adapter boundary to semantic `Documen
 
 `unavailable` identifies a transport/infrastructure condition that may be retried after applying the operation's reconciliation rules. Provider error text is not the application contract.
 
+At the HTTP surface, semantic authorization is preserved: the database `permission_denied` exception maps through the TypeScript adapter to HTTP 403 rather than becoming a provider-shaped 5xx response.
+
 ## Executable database contract
 
 `.github/workflows/database-contract.yml` turns the database contract into executable evidence rather than static SQL-string inspection only.
@@ -135,11 +144,53 @@ The acceptance suite uses only synthetic UUIDs/content and verifies:
 
 This is repository-level PostgreSQL evidence. It is not a substitute for acceptance against a real target Supabase project and its Auth/platform configuration.
 
+## Nginx production topology
+
+The reference HTTP production shape is:
+
+```text
+Client
+  |
+  v
+Nginx :443
+  TLS termination
+  request size / timeout / proxy header boundary
+  |
+  v
+127.0.0.1:3100
+Node.js 24 Vault HTTP runtime
+  |
+  v
+DocumentService
+  |
+  v
+Supabase REST/RPC
+  caller Bearer JWT + publishable/anon key
+  |
+  v
+Supabase Auth + RLS + PostgreSQL
+```
+
+Nginx is the public listener. The Node runtime defaults to `127.0.0.1` and requires an explicit override before it can bind a non-loopback address.
+
+The normal HTTP runtime does not use a service-role credential. `/v1/*` requests require the caller's Supabase Bearer access token; that identity reaches the existing RLS boundary.
+
+The source-controlled reference also provides:
+
+- an Nginx configuration with TLS termination placeholders, fixed-host HTTP redirect, explicit Authorization forwarding, upstream keepalive, request size and proxy timeout bounds;
+- a systemd unit using a dedicated `vault` account, `NoNewPrivileges`, filesystem/kernel protection and an empty capability bounding set;
+- graceful SIGTERM/SIGINT shutdown;
+- liveness/readiness endpoints;
+- a production build/start smoke in CI.
+
+See `docs/NGINX_DEPLOYMENT.md` for deployment details.
+
 ## Repository security automation
 
 Source-controlled checks include:
 
 - read-only architecture verification workflow
+- production build/start/shutdown smoke
 - executable database contract workflow
 - CodeQL `security-extended` analysis for JavaScript/TypeScript and Python
 - OSV-Scanner lockfile vulnerability scan
@@ -150,34 +201,15 @@ Source-controlled checks include:
 
 The dependency gate does not rely on the npm Advisory API. GitHub Dependency Review is an additional graph-backed control that requires Dependency Graph to be enabled in repository administration. Production organizations should enable and require it when available. See `docs/REPOSITORY_GOVERNANCE.md`.
 
-## Recommended production topology
+## Recommended environment separation
 
-Use separate environments and credentials.
-
-```text
-Developer / CI
-      |
-      v
-application / agent caller
-      |
-      v
-public TypeScript capability contract
-      |
-      v
-Supabase adapter
-      |
-      v
-Supabase project per environment
-  Auth + RLS + PostgreSQL
-```
-
-Recommended environment separation:
+Use separate environments and credentials:
 
 - development
 - staging / acceptance
 - production
 
-Do not share service-role credentials between environments.
+Do not share service-role credentials between environments. Normal application runtime does not need a service-role credential at all.
 
 ## Organization controls required before production
 
@@ -188,6 +220,15 @@ Do not share service-role credentials between environments.
 - protected production credentials
 - controlled Supabase administrator access
 - periodic access review
+
+### Host and edge
+
+- production DNS ownership and change control
+- TLS certificate issuance and renewal
+- firewall policy that keeps Node port `3100` non-public
+- OS security updates
+- Nginx package lifecycle and configuration ownership
+- dedicated service account creation and permissions
 
 ### Data protection
 
@@ -200,7 +241,8 @@ Do not share service-role credentials between environments.
 ### Operations
 
 - monitoring and alerting
-- application / database error logging with secret redaction
+- Nginx / application / database error logging with secret redaction
+- centralized log retention/aggregation when required
 - incident ownership and escalation path
 - maintenance windows / change policy when required
 - capacity and quota monitoring
@@ -226,24 +268,30 @@ Do not share service-role credentials between environments.
 
 At minimum, verify with synthetic test users in the target environment:
 
-1. owner can read/write/delete documents.
-2. editor can read/write documents but cannot perform owner-only membership operations.
-3. viewer can read but cannot write, including exact-replay-shaped write attempts.
-4. authenticated non-members cannot read or write another vault.
-5. unauthenticated access is rejected.
-6. stale `expectedVersion` fails without mutation.
-7. successful create/update returns and read-backs the same document ID.
-8. replaying the exact same create does not create a second document.
-9. reusing a create ID with different state fails closed.
-10. path collision across identities fails closed.
-11. replaying an already committed exact update returns the committed version rather than mutating twice.
-12. delete is followed by same-ID absence.
-13. Supabase outage does not create a GitHub or local second canonical.
-14. runtime logs do not contain secrets.
-15. backup restore is demonstrated in the target organization's environment.
-16. repository ruleset / branch protection matches the organization's approved governance policy.
-17. OSV dependency vulnerability scan is green for the exact committed lockfile being released.
-18. repository `database-contract` is green for the exact migration set being released.
+1. `npm run check` and `npm run build` pass for the exact release.
+2. built `dist/server/main.js` starts and handles SIGTERM cleanly.
+3. Node binds `127.0.0.1:3100`, not a public interface.
+4. host firewall does not expose port `3100` externally.
+5. `nginx -t` succeeds before reload.
+6. HTTPS liveness/readiness through Nginx succeeds.
+7. anonymous `/v1/*` requests return 401.
+8. owner can read/write/delete documents.
+9. editor can read/write documents but cannot perform owner-only membership operations.
+10. viewer can read but cannot write, including exact-replay-shaped write attempts.
+11. authenticated non-members cannot read or write another vault.
+12. stale `expectedVersion` fails without mutation.
+13. successful create/update returns and read-backs the same document ID.
+14. replaying the exact same create does not create a second document.
+15. reusing a create ID with different state fails closed.
+16. path collision across identities fails closed.
+17. replaying an already committed exact update returns the committed version rather than mutating twice.
+18. delete is followed by same-ID absence.
+19. Supabase outage returns a bounded 503 and does not create a GitHub or local second canonical.
+20. Nginx/Node logs contain request IDs but not Authorization values, access tokens, Supabase keys, or request bodies.
+21. backup restore is demonstrated in the target organization's environment.
+22. repository ruleset / branch protection matches the organization's approved governance policy.
+23. OSV dependency vulnerability scan is green for the exact committed lockfile being released.
+24. repository `database-contract` is green for the exact migration set being released.
 
 ## Non-claims
 
@@ -256,6 +304,8 @@ This repository does **not** by itself claim or provide:
 - contractual uptime or support SLA
 - managed backups or disaster recovery
 - production monitoring service
+- DNS or certificate management service
+- host firewall/OS management
 - legal / regulatory suitability for a specific organization
 
 Those require organization-specific controls and evidence.
