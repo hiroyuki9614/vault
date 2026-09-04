@@ -1,71 +1,140 @@
 # Public Vault Agent Rules
 
-この repository は Supabase-first の公開 Vault Reference Implementation です。個人 Vault ではありません。Executable domain/runtime policy の主実装言語は TypeScript です。
+This repository is a Supabase-first public Vault Reference Implementation. It is not a personal Vault.
+
+Executable runtime policy is TypeScript and follows the same responsibility-first / Functional Core + Effectful Adapter boundary used by Personal Vault v3.
 
 ## Bootstrap
 
-通常は次だけを読む。
+Read only what the task needs:
 
 1. `core/machine/main/repository.json`
 2. `core/machine/indexes/responsibilities.json`
-3. task owner の `*/machine/contracts` と必要な `*/machine/core`
-4. Supabase/schema boundary に触れる場合だけ `docs/ARCHITECTURE.md` と `supabase/README.md`
-5. Skill が material な場合だけ `.agents/SKILLS_INDEX.md` から必要な Skill
+3. task-owner public contract, normally `<capability>/public.ts`
+4. `docs/ARCHITECTURE.md` when architecture/data boundary is material
+5. `docs/ENTERPRISE_READINESS.md` when production/enterprise readiness is material
+6. `.agents/SKILLS_INDEX.md` only when a listed Skill is materially useful
 
-SQL変更では既存 migration と semantic RPC contract を確認する。
-
-全文走査、全Skill preload、追加review、追加gateを既定にしない。
+Do not preload all Skills or repository history.
 
 ## TypeScript runtime boundary
 
-v3 と同じ responsibility-first / Functional Core + Effectful Adapter 方式を使う。
+For executable capability work:
 
 ```text
-<responsibility>/machine/contracts
-  -> provider-free public contract
-
-<responsibility>/machine/core
-  -> pure TypeScript decision / validation / plan
-
-<responsibility>/machine/ports
-  -> semantic effect boundary
-
-<responsibility>/machine/adapters
-  -> provider / network / DB / filesystem effect
-
-<responsibility>/machine/runtime
-  -> composition / orchestration / read-back
+public.ts
+  -> machine/contracts
+  -> machine/core
+  -> machine/ports
+  -> machine/adapters
+  -> machine/runtime
 ```
 
-`machine/core` では原則として次を直接扱わない。
+Rules:
 
-- Supabase/provider SDK
-- database connection
-- network / `fetch`
-- filesystem / process execution
-- `process.env`
-- wall clock / random
-- deployment-specific state
+- `machine/core` owns pure validation/decision/transformation/verification.
+- Core must not directly use Supabase, network, filesystem, process execution, env lookup, clock/random, or deployment state.
+- `machine/ports` expose semantic effects and semantic errors.
+- Provider SDK types, provider row types and provider error objects must not become public contracts.
+- `machine/adapters` own provider-specific RPC/HTTP/table mapping and response validation.
+- `machine/runtime` composes effects; do not move business policy back into runtime.
+- Cross-responsibility callers use public contracts only.
 
-必要な値は caller / runtime / adapter が明示入力として渡す。
+## Documents completion contract
 
-Cross-responsibility caller は public contract / Port のみに依存し、foreign internalsへ到達しない。
+Document identity is `id`; `path` is a mutable locator.
 
-## Documents responsibility
+Create/update completion:
 
-最初の executable Capability は `documents`。
+```text
+plan
+ -> put effect
+ -> validate mutation snapshot
+ -> getById(same document id)
+ -> verify exact expected state/version
+ -> complete
+```
 
-- contract: `documents/machine/contracts/document.ts`
-- pure policy: `documents/machine/core/document-policy.ts`
-- Port: `documents/machine/ports/document-store.ts`
-- Supabase adapter: `documents/machine/adapters/supabase-rpc-document-store.ts`
-- composition/read-back: `documents/machine/runtime/document-service.ts`
+Delete completion:
 
-Document mutationはcoreがeffect planを作り、adapterが実行し、runtimeがsame-subject read-backを検証する。
+```text
+delete effect
+ -> returned id equals requested id
+ -> getById(same document id)
+ -> absent
+ -> complete
+```
+
+Do not downgrade same-ID verification to path-only verification.
+
+## Error boundary
+
+Supabase/provider errors are Adapter concerns.
+
+Normal caller-visible store failures use semantic `DocumentStoreError` codes:
+
+```text
+not_found
+version_conflict
+permission_denied
+unauthenticated
+invalid_request
+unavailable
+invalid_response
+unknown
+```
+
+Do not expose raw provider error objects/messages as the capability contract.
+
+Retry policy belongs to the caller/composition layer. Do not put sleep/backoff/network retry in the pure core.
+
+## Canonical boundary
+
+- mutable Vault data -> Supabase PostgreSQL only
+- executable domain policy -> TypeScript `*/machine/core`
+- public API -> `<capability>/public.ts`
+- schema/RLS/RPC -> versioned Git migrations
+- architecture/Agent contract -> Git Markdown/JSON
+- credentials -> deployment secret store only
+
+Supabase outage must not cause a GitHub/local write fallback or second canonical.
+
+## Supabase boundary
+
+- Supabase Auth + RLS are mandatory.
+- Normal runtime uses semantic RPCs.
+- Service-role key is excluded from normal client/Agent contracts.
+- Applied migrations are immutable; schema changes use a new migration.
+- Optimistic concurrency is required for document update/delete.
+- Same-document-ID read-back is required after mutation.
+
+## Build and dependency boundary
+
+- Node.js 24 major line.
+- npm 11 major line.
+- Use committed `package-lock.json`.
+- CI and normal clean verification use `npm ci`, not `npm install`.
+- Direct development dependencies are exact versions.
+- Dependency changes must pass typecheck, Vitest and architecture checks.
+- Dependabot proposals do not bypass normal verification.
+
+## Public repository safety
+
+Never commit:
+
+- personal/customer/employer data
+- token/password/API key/private key
+- Supabase service-role key
+- production database credentials
+- private/shared Vault state
+
+Synthetic fixtures must not look like leaked real data.
+
+See `SECURITY.md` for vulnerability reporting.
 
 ## Skill boundary
 
-Public Skillは再利用可能なtask contract。Skillの存在や`effects` metadataはmutation権限を付与しない。
+Public Skills are reusable task contracts. Their existence or `effects` metadata does not grant mutation authority.
 
 ### Project lifecycle
 
@@ -89,54 +158,28 @@ Public Skillは再利用可能なtask contract。Skillの存在や`effects` meta
 - `functional-decomposition`
 - `configuration-boundary`
 
-Skillはtaskへmaterialなものだけ使う。unknownを推測で埋めず、完了後に追加workflowやreview stackを自動生成しない。
-
-## Canonical boundary
-
-- mutable Vault data の唯一の canonical storage は Supabase PostgreSQL。
-- executable domain policy は TypeScript core が所有する。
-- Git Markdown / JSON は architecture / agent contract であり、ユーザーデータの canonical storage にしない。
-- Supabase unavailable 時に GitHub へ data write fallback しない。
-- document identity は `documents.id`。`path` は locator であり identity ではない。
-
-## Supabase boundary
-
-- Supabase Auth と RLS を必須とする。
--通常 client / Agent は semantic RPC (`get_document`, `put_document`, `delete_document`) を adapter 経由で使用する。
-- service-role key を client、Prompt、repository に置かない。
-- project URL / publishable key は deployment environment から注入する。
-- schema change は新しい migration で行う。適用済み migration を書き換えない。
-- provider row shape / error / RPC parameter名を core/public contract へ漏らさない。
-
-## Public repository safety
-
-禁止:
-
-- 実在人物の個人情報・金融情報・顧客情報の保存
-- token / password / API key / private key の保存
-- Supabase service-role key の保存
-- private/shared Vault からの自動同期
-- synthetic example を実データのように見せること
-- GitHub と Supabase の dual canonical
-
-## Growth stopper
-
-新しい universal ExecutionRunner、Control Plane、Work Context、Moving-Main stack、recovery stack、mandatory review stackを追加しない。
+Use only material Skills. Do not create extra workflow/review stacks after acceptance is satisfied.
 
 ## Verification
 
-TypeScript runtime変更では最低限:
+Before completion, run the applicable checks. Repository-wide baseline:
 
 ```bash
-npm run typecheck
-npm run test:ts
+npm ci
+npm run check
 ```
 
-architecture / repository boundaryを含む変更では:
+CI is authoritative for the clean environment.
 
-```bash
-python -m unittest tests/test_architecture_check.py
-python tooling/architecture_check.py
-```
+## Growth stoppers
 
-状態変更は必要な範囲でsame-subject read-backする。acceptanceを満たしたら停止する。
+Do not add by default:
+
+- universal ExecutionRunner
+- universal Work Context
+- Moving-Main/reconciliation stack
+- generic recovery broker
+- mandatory review-of-review stack
+- repository-wide provider registry without a concrete Capability need
+
+Stop when the requested acceptance criteria are satisfied.

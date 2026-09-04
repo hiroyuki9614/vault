@@ -1,10 +1,14 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "canonical_data_backend": "supabase",
   "supabase_required": true,
   "github_data_canonical": false,
   "runtime_language": "typescript",
   "runtime_architecture": "functional_core_effectful_adapter",
+  "dependency_install": "npm_ci",
+  "lockfile_required": true,
+  "identity_read_back_required": true,
+  "semantic_store_errors_required": true,
   "forbidden_top_level_paths": [
     "00_Inbox",
     "10_Daily",
@@ -18,22 +22,29 @@
   "required_paths": [
     "README.md",
     "AGENTS.md",
+    "SECURITY.md",
     "vault.config.yml",
     "package.json",
+    "package-lock.json",
     "tsconfig.json",
+    ".github/dependabot.yml",
     "core/machine/main/repository.json",
     "core/machine/indexes/responsibilities.json",
+    "documents/public.ts",
     "documents/machine/contracts/document.ts",
     "documents/machine/core/document-policy.ts",
     "documents/machine/ports/document-store.ts",
     "documents/machine/adapters/supabase-rpc-document-store.ts",
     "documents/machine/runtime/document-service.ts",
     "docs/ARCHITECTURE.md",
+    "docs/ENTERPRISE_READINESS.md",
     "supabase/README.md",
-    "supabase/migrations/202608310001_supabase_first_vault.sql"
+    "supabase/migrations/202608310001_supabase_first_vault.sql",
+    "supabase/migrations/202609040001_document_identity_read.sql"
   ],
   "required_rpc_names": [
     "get_document",
+    "get_document_by_id",
     "put_document",
     "delete_document"
   ],

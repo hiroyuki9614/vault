@@ -1,6 +1,6 @@
 # Supabase
 
-Supabase はこの Vault の必須 data platform です。
+Supabase is the required data platform for this Vault reference runtime.
 
 ## Required services
 
@@ -9,11 +9,11 @@ Supabase はこの Vault の必須 data platform です。
 - Row Level Security
 - SQL RPC
 
-Storage / Realtime / Edge Functions は必須ではありません。
+Storage / Realtime / Edge Functions are not required by the current baseline.
 
 ## Apply migrations
 
-Supabase CLI を使用する場合の例です。
+Apply all versioned migrations in order. With Supabase CLI:
 
 ```bash
 supabase login
@@ -21,47 +21,87 @@ supabase link --project-ref <your-project-ref>
 supabase db push
 ```
 
-project ref や access token は repository に保存しません。
+Do not store the project ref access token or service-role key in this repository.
 
-Application runtime は環境変数等から次を受け取ります。
+Application runtime receives deployment configuration such as:
 
 ```text
 SUPABASE_URL
 SUPABASE_ANON_KEY
 ```
 
-service-role key は通常 client / Agent に渡しません。
+The service-role key is not part of the normal client / Agent contract.
 
 ## First vault
 
-認証済み user が `vaults` に owner row を作成します。その後 owner は `vault_members` へ editor/viewer を追加できます。
+An authenticated user creates a `vaults` row as owner. The owner may then add editor/viewer members through the authorized data boundary.
 
-## Document API
+## Document RPC API
 
-通常の document 操作は RPC を使用します。
+Normal document operations use semantic RPCs.
 
-### Read
+### Read by path
 
 `public.get_document(vault_id, path)`
+
+Path is a mutable locator.
+
+### Read by identity
+
+`public.get_document_by_id(vault_id, document_id)`
+
+Identity reads are used for mutation completion/read-back because document `id` is stable even if path changes.
 
 ### Create
 
 `public.put_document(vault_id, null, path, title, content, metadata, null)`
 
+A successful create returns version `1`.
+
 ### Update
 
-read で得た `id` と `version` を使い、
+Use the `id` and `version` from the current snapshot:
 
 `public.put_document(vault_id, id, path, title, content, metadata, version)`
 
-を呼びます。version が一致しなければ `version_conflict` で失敗します。
+A stale version fails with `version_conflict` and does not mutate the document.
 
 ### Delete
 
 `public.delete_document(vault_id, id, version)`
 
-削除も stale version を拒否します。
+Delete also rejects a stale version.
 
-## Read-back
+## Same-identity read-back
 
-mutation 成功後は返却された `id` / `path` を使って同じ identity を再取得し、意図した結果を確認します。
+Transport success is not the completion contract.
+
+Create/update:
+
+```text
+put_document
+  -> validate returned document snapshot
+  -> get_document_by_id(vault_id, returned_id)
+  -> same id / expected state / expected version
+```
+
+Delete:
+
+```text
+delete_document
+  -> returned id must equal requested id
+  -> get_document_by_id(vault_id, requested_id)
+  -> no row
+```
+
+This avoids treating a mutable path as identity evidence.
+
+## Authorization boundary
+
+All document RPCs use `SECURITY INVOKER`; RLS remains authoritative.
+
+- owner/editor: document write
+- owner/editor/viewer: document read
+- unauthenticated: no data access
+
+Production acceptance should verify these roles with synthetic users in the target environment.

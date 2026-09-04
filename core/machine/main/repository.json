@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "repository": "hiroyuki9614/vault",
   "generation": "public-vault-reference",
   "visibility_expected": "public",
@@ -22,7 +22,21 @@
     "language": "typescript",
     "module_system": "esm",
     "architecture": "functional_core_effectful_adapter",
-    "provider_types_in_core": false
+    "provider_types_in_core": false,
+    "strict_typecheck": true,
+    "dependency_install": "npm_ci",
+    "lockfile_required": true
+  },
+  "enterprise_baseline": {
+    "same_identity_read_back": true,
+    "optimistic_concurrency": true,
+    "semantic_provider_error_mapping": true,
+    "provider_free_public_contract": true,
+    "dependency_update_automation": true,
+    "security_reporting_policy": true,
+    "ci_time_bounded": true,
+    "compliance_certification_claimed": false,
+    "sla_claimed": false
   },
   "database": {
     "canonical_backend": "supabase_postgresql",
