@@ -1,0 +1,112 @@
+name: docker-staging
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-staging-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_ANON_KEY: synthetic-docker-ci-key
+      VAULT_STAGING_PORT: "18080"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Validate Compose model
+        run: |
+          docker compose -f deploy/docker/compose.staging.yml config --quiet
+          docker compose -f deploy/docker/compose.staging.yml config > /tmp/vault-compose-rendered.yml
+          grep -A8 -B2 'target: 8080' /tmp/vault-compose-rendered.yml
+
+      - name: Build staging images
+        run: docker compose -f deploy/docker/compose.staging.yml build --pull
+
+      - name: Smoke Apache and Node containers
+        run: |
+          set -euo pipefail
+          compose=(docker compose -f deploy/docker/compose.staging.yml)
+          cleanup() {
+            "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+          }
+          diagnostics() {
+            echo '--- health live body ---' >&2
+            cat /tmp/docker-vault-health.json >&2 2>/dev/null || true
+            echo >&2
+            echo '--- health ready body ---' >&2
+            cat /tmp/docker-vault-ready.json >&2 2>/dev/null || true
+            echo >&2
+            echo '--- anonymous body/status ---' >&2
+            cat /tmp/docker-vault-anon.json >&2 2>/dev/null || true
+            echo >&2
+            printf 'anonymous_status=%s\n' "${anonymous_status:-<unset>}" >&2
+            printf 'apache_port=%s\n' "${apache_port:-<unset>}" >&2
+            printf 'node_bindings=%s\n' "${node_bindings:-<unset>}" >&2
+            echo '--- docker compose ps ---' >&2
+            "${compose[@]}" ps >&2 || true
+            apache_id=$("${compose[@]}" ps -q apache 2>/dev/null || true)
+            if [ -n "$apache_id" ]; then
+              echo '--- apache port bindings ---' >&2
+              docker inspect --format '{{json .HostConfig.PortBindings}} {{json .NetworkSettings.Ports}}' "$apache_id" >&2 || true
+            fi
+            echo '--- rendered compose ports ---' >&2
+            grep -A8 -B2 'target: 8080' /tmp/vault-compose-rendered.yml >&2 || true
+            echo '--- docker compose logs ---' >&2
+            "${compose[@]}" logs --no-color --tail=200 apache vault-node >&2 || true
+          }
+          trap cleanup EXIT
+          trap 'status=$?; diagnostics; exit "$status"' ERR
+
+          "${compose[@]}" up -d
+
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl --fail --silent \
+              --header 'X-Request-ID: attacker-controlled-request-id' \
+              http://127.0.0.1:18080/health/live >/tmp/docker-vault-health.json; then
+              ready=1
+              break
+            fi
+            sleep 0.25
+          done
+          test "$ready" -eq 1
+          grep -q '"status":"ok"' /tmp/docker-vault-health.json
+          grep -q '"requestId":"' /tmp/docker-vault-health.json
+          if grep -q 'attacker-controlled-request-id' /tmp/docker-vault-health.json; then
+            echo 'Docker Apache did not replace the untrusted X-Request-ID' >&2
+            exit 1
+          fi
+
+          curl --fail --silent http://127.0.0.1:18080/health/ready >/tmp/docker-vault-ready.json
+          grep -q '"status":"ready"' /tmp/docker-vault-ready.json
+
+          anonymous_status=$(curl --silent --output /tmp/docker-vault-anon.json --write-out '%{http_code}' \
+            --request POST http://127.0.0.1:18080/v1/not-a-route \
+            --header 'Content-Type: application/json' \
+            --data '{}')
+          test "$anonymous_status" = '401'
+          grep -q '"error":"unauthenticated"' /tmp/docker-vault-anon.json
+
+          apache_port=$("${compose[@]}" port apache 8080)
+          test "$apache_port" = '127.0.0.1:18080'
+          node_id=$("${compose[@]}" ps -q vault-node)
+          test -n "$node_id"
+          node_bindings=$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$node_id")
+          test "$node_bindings" = '{}'
+
+          diagnostics
+          trap - ERR
+          cleanup
+          trap - EXIT
