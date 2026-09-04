@@ -42,7 +42,17 @@ public.documents  <- canonical data
 
 ## Public Agent Skills
 
-AI開発で再利用できる境界Skillです。入口は [` .agents/SKILLS_INDEX.md`](.agents/SKILLS_INDEX.md) です。
+AI開発で再利用できるSkillです。入口は [`.agents/SKILLS_INDEX.md`](.agents/SKILLS_INDEX.md) です。
+
+### Development flow
+
+- [`requirements-guard`](.agents/skills/requirements-guard/SKILL.md) — current requirement / canonical / implementation / testsの整合
+- [`test-driven-development`](.agents/skills/test-driven-development/SKILL.md) — valid Red → minimal Green → Refactor → fresh verification
+- [`qa-quality-assurance`](.agents/skills/qa-quality-assurance/SKILL.md) — user/business riskからtest conditionと優先度を設計
+- [`secure-coding-guard`](.agents/skills/secure-coding-guard/SKILL.md) — tool-based checksとsemantic security reviewを組み合わせる
+- [`git-safe-operations`](.agents/skills/git-safe-operations/SKILL.md) — unrelated changesを保持してtargeted write/read-backする
+
+### Architecture boundary
 
 - [`dependency-boundary`](.agents/skills/dependency-boundary/SKILL.md) — semantic ownership、public/private境界、dependency directionを分類
 - [`functional-decomposition`](.agents/skills/functional-decomposition/SKILL.md) — meaningful decisionとexternal effectを分離すべきか判定
