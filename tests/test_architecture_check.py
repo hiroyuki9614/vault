@@ -93,6 +93,28 @@ class ArchitectureCheckTest(unittest.TestCase):
         workflow.write_text(workflow.read_text(encoding="utf-8").replace("npm ci", "npm install", 1), encoding="utf-8")
         self.assertTrue(any("must use npm ci" in error for error in check(repo)))
 
+    def test_external_docker_from_must_be_fully_qualified(self):
+        repo = self.copy_repo()
+        dockerfile = repo / "deploy" / "docker" / "Dockerfile.apache"
+        dockerfile.write_text(
+            dockerfile.read_text(encoding="utf-8").replace("docker.io/library/httpd:", "httpd:", 1),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("fully qualified registry reference" in error for error in check(repo)))
+
+    def test_external_docker_from_must_remain_digest_pinned(self):
+        repo = self.copy_repo()
+        dockerfile = repo / "deploy" / "docker" / "Dockerfile.apache"
+        text = dockerfile.read_text(encoding="utf-8")
+        dockerfile.write_text(text.split("@sha256:", 1)[0] + "\n" + "\n".join(text.splitlines()[1:]) + "\n", encoding="utf-8")
+        self.assertTrue(any("Dockerfile external FROM must be digest pinned" in error for error in check(repo)))
+
+    def test_docker_stage_alias_is_not_treated_as_external_image(self):
+        repo = self.copy_repo()
+        dockerfile = repo / "deploy" / "docker" / "Dockerfile.runtime"
+        dockerfile.write_text(dockerfile.read_text(encoding="utf-8") + "\nFROM build AS alias-smoke\n", encoding="utf-8")
+        self.assertFalse(any("Dockerfile external FROM" in error for error in check(repo)))
+
     def test_unpinned_action_fails_for_dash_uses_syntax(self):
         repo = self.copy_repo()
         workflow = repo / ".github" / "workflows" / "architecture.yml"
