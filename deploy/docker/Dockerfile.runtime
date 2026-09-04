@@ -7,6 +7,7 @@ RUN npm ci --no-audit --no-fund
 
 COPY core ./core
 COPY documents ./documents
+COPY measurement ./measurement
 COPY server ./server
 RUN npm run build
 
