@@ -1,5 +1,5 @@
 # Required modules on Debian/Ubuntu:
-#   a2enmod ssl proxy proxy_http headers setenvif
+#   a2enmod ssl proxy proxy_http headers setenvif unique_id
 # Optional HTTP/2:
 #   a2enmod http2
 #
@@ -37,10 +37,12 @@
     Header always set X-Content-Type-Options "nosniff"
     Header always set Referrer-Policy "no-referrer"
 
-    # Preserve the caller Bearer identity explicitly at the trusted proxy boundary.
+    # Preserve caller identity, but replace correlation identity at this trusted edge.
+    # mod_unique_id supplies UNIQUE_ID; RequestHeader set replaces any caller value.
     # Do not log VAULT_AUTHORIZATION or the Authorization header.
     SetEnvIfNoCase Authorization "^(.+)$" VAULT_AUTHORIZATION=$1
     RequestHeader set Authorization "%{VAULT_AUTHORIZATION}e" env=VAULT_AUTHORIZATION
+    RequestHeader set X-Request-ID "%{UNIQUE_ID}e"
     RequestHeader set X-Forwarded-Proto "https"
 
     ProxyPass        /health/live  http://127.0.0.1:3100/health/live  connectiontimeout=2 timeout=5 retry=0
