@@ -36,6 +36,8 @@ export class DocumentValidationError extends Error {
 export type PutDocumentCommand =
   | {
       readonly kind: 'create';
+      /** Stable caller-generated UUID. Reusing the same id makes create retry-safe. */
+      readonly id: string;
       readonly vaultId: string;
       readonly path: string;
       readonly title?: string;
@@ -73,11 +75,12 @@ export interface DocumentIdentityRequest {
 
 export interface PutDocumentRequest {
   readonly vaultId: string;
-  readonly documentId: string | null;
+  readonly documentId: string;
   readonly path: string;
   readonly title: string;
   readonly content: string;
   readonly metadata: JsonObject;
+  /** null means idempotent create; positive integer means optimistic update. */
   readonly expectedVersion: number | null;
 }
 
