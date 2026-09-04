@@ -1,8 +1,8 @@
+import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Server } from 'node:http';
-import { createVaultHttpServer } from './http-app.js';
 import type { VaultServerConfig } from './config.js';
+import { createVaultHttpServer } from './http-app.js';
 
 const config: VaultServerConfig = {
   host: '127.0.0.1',
@@ -54,7 +54,7 @@ describe('Vault HTTP server', () => {
   });
 
   it('forwards bearer identity and anon key only to the named semantic RPC', async () => {
-    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
     const fetchFn: typeof fetch = async (input, init) => {
       calls.push({ url: String(input), init });
       return new Response(JSON.stringify([{
