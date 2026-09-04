@@ -16,7 +16,7 @@ The repository itself enforces or declares:
 - deterministic `npm ci`
 - strict TypeScript / Vitest / architecture checks
 - CodeQL analysis for JavaScript/TypeScript and Python
-- `npm audit --audit-level=high` for locked dependency vulnerabilities
+- OSV-Scanner against the committed `package-lock.json`, failing on any known vulnerability
 - Dependabot updates
 - CODEOWNERS ownership declarations
 - SECURITY.md vulnerability reporting boundary
@@ -32,7 +32,7 @@ Recommended minimum:
 
 1. Require pull requests before merging.
 2. Require the repository's `architecture` check.
-3. Require the `dependency-audit` check.
+3. Require the `dependency-vulnerability-scan` check.
 4. Require CodeQL checks appropriate to the changed languages / organization policy.
 5. Block force pushes.
 6. Block branch deletion.
@@ -54,7 +54,7 @@ GitHub-side features are separately administered state. Recommended production s
 - enable private vulnerability reporting where available;
 - require signed commits or vigilant mode when organizational policy requires it.
 
-The current public reference repository can enforce `npm audit` entirely from source even when Dependency Graph is not enabled. GitHub Dependency Review is an additional graph-backed control, not a substitute for the source-enforced audit.
+The current public reference repository enforces an OSV lockfile scan entirely from source even when Dependency Graph is not enabled. GitHub Dependency Review is an additional graph-backed control, not a substitute for the source-enforced OSV scan.
 
 ## Recommended repository options
 
