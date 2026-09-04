@@ -1,8 +1,13 @@
 {
   "name": "public-vault-reference-runtime",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
+  "packageManager": "npm@11.19.0",
+  "engines": {
+    "node": ">=24.0.0 <25",
+    "npm": ">=11.0.0 <12"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test:ts": "vitest run",
@@ -11,7 +16,7 @@
     "check": "npm run check:ts && npm run check:architecture"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
+    "@types/node": "22.10.0",
     "typescript": "7.0.2",
     "vitest": "4.1.11"
   }
