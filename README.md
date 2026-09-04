@@ -289,6 +289,11 @@ synthetic auth bootstrap
 - [`functional-decomposition`](.agents/skills/functional-decomposition/SKILL.md)
 - [`configuration-boundary`](.agents/skills/configuration-boundary/SKILL.md)
 
+### Skill lifecycle / observability
+
+- [`skill-creation`](.agents/skills/skill-creation/SKILL.md)
+- [`skill-measurement`](.agents/skills/skill-measurement/SKILL.md)
+
 ## Quick start
 
 Node.js 24 / npm 11 を使用します。
