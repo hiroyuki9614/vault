@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "responsibilities": {
+    "core": {
+      "status": "active",
+      "owns": [
+        "repository_bootstrap",
+        "architecture_contract",
+        "responsibility_registry",
+        "permission_and_secret_boundary",
+        "architecture_verification_boundary"
+      ],
+      "must_not_own": [
+        "document_business_logic",
+        "document_mutable_state",
+        "provider_specific_runtime_state",
+        "universal_execution_runner"
+      ]
+    },
+    "documents": {
+      "status": "active",
+      "owns": [
+        "document_identity_semantics",
+        "document_write_validation",
+        "document_optimistic_concurrency_contract",
+        "document_read_back_verification",
+        "document_persistence_port"
+      ],
+      "public_contracts": [
+        "documents/machine/contracts/document.ts"
+      ],
+      "implementation": {
+        "policy": "documents/machine/core/document-policy.ts",
+        "port": "documents/machine/ports/document-store.ts",
+        "effect_adapter": "documents/machine/adapters/supabase-rpc-document-store.ts",
+        "composition": "documents/machine/runtime/document-service.ts"
+      },
+      "must_not_own": [
+        "supabase_project_identity",
+        "supabase_credentials",
+        "physical_table_shape_as_public_contract",
+        "github_fallback_storage"
+      ]
+    },
+    "skills": {
+      "status": "active_public_reference",
+      "owns": [
+        "public_reusable_agent_skill_contracts",
+        "skill_routing_index"
+      ],
+      "public_contracts": [
+        ".agents/SKILLS_INDEX.md"
+      ],
+      "must_not_own": [
+        "subject_work_execution",
+        "automatic_mutation_authority"
+      ]
+    }
+  },
+  "dependency_rules": {
+    "foreign_internal_access": "forbidden",
+    "public_contract_only_across_responsibilities": true,
+    "provider_types_in_core_or_public_contract": "forbidden",
+    "dependency_cycles": "forbidden"
+  },
+  "top_level_is_not_fixed_capability_count": true
+}
