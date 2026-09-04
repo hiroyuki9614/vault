@@ -15,6 +15,7 @@
       "must_not_own": [
         "document_business_logic",
         "document_mutable_state",
+        "measurement_business_logic",
         "provider_specific_runtime_state",
         "universal_execution_runner"
       ]
@@ -46,6 +47,36 @@
         "provider_error_objects_as_public_contract",
         "physical_table_shape_as_public_contract",
         "github_fallback_storage"
+      ]
+    },
+    "measurement": {
+      "status": "active_optional_reference",
+      "owns": [
+        "terminal_execution_measurement_contract",
+        "measurement_validation_and_normalization",
+        "measurement_persistence_port",
+        "measurement_semantic_store_error_contract",
+        "best_effort_recording_semantics",
+        "provider_free_measurement_api"
+      ],
+      "public_contracts": [
+        "measurement/public.ts",
+        "measurement/machine/contracts/measurement.ts"
+      ],
+      "implementation": {
+        "policy": "measurement/machine/core/measurement-policy.ts",
+        "port": "measurement/machine/ports/measurement-store.ts",
+        "effect_adapter": "measurement/machine/adapters/supabase-rpc-measurement-store.ts",
+        "composition": "measurement/machine/runtime/measurement-service.ts"
+      },
+      "must_not_own": [
+        "subject_work_execution",
+        "subject_success_semantics",
+        "raw_prompt_or_input_output_content",
+        "employee_performance_policy",
+        "company_specific_kpis",
+        "agent_orchestration",
+        "universal_execution_runner"
       ]
     },
     "skills": {
