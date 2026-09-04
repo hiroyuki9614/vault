@@ -40,11 +40,15 @@ class ArchitectureCheckTest(unittest.TestCase):
 
     def test_missing_idempotent_create_invariant_fails(self):
         repo = self.copy_repo()
-        migration = repo / "supabase" / "migrations" / "202609040002_idempotent_document_create.sql"
-        migration.write_text(
-            migration.read_text(encoding="utf-8").replace("idempotency_conflict", "removed_conflict"),
-            encoding="utf-8",
-        )
+        for name in (
+            "202609040002_idempotent_document_create.sql",
+            "202609040003_document_write_authorization.sql",
+        ):
+            migration = repo / "supabase" / "migrations" / name
+            migration.write_text(
+                migration.read_text(encoding="utf-8").replace("idempotency_conflict", "removed_conflict"),
+                encoding="utf-8",
+            )
         self.assertTrue(any("idempotency_conflict" in error for error in check(repo)))
 
     def test_create_command_without_required_identity_fails(self):
@@ -143,7 +147,7 @@ class ArchitectureCheckTest(unittest.TestCase):
         repo = self.copy_repo()
         workflow = repo / ".github" / "workflows" / "database-contract.yml"
         workflow.write_text(
-            workflow.read_text(encoding="utf-8").replace("-v ON_ERROR_STOP=1", "", 1),
+            workflow.read_text(encoding="utf-8").replace("-v ON_ERROR_STOP=1", ""),
             encoding="utf-8",
         )
         self.assertTrue(any("ON_ERROR_STOP" in error for error in check(repo)))
