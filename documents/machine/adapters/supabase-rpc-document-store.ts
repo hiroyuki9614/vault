@@ -95,7 +95,7 @@ function metadataObject(record: Record<string, unknown>): JsonObject {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return failInvalidResponse('metadata must be a JSON object');
   }
-  return value;
+  return value as JsonObject;
 }
 
 function firstRow(value: unknown): unknown | null {
