@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "repository": "hiroyuki9614/vault",
+  "target": "tag",
+  "target_pattern": "v*",
+  "intended_enforcement": "active",
+  "restrict_creations": true,
+  "restrict_updates": true,
+  "restrict_deletions": true,
+  "bypass_policy": "release_or_break_glass_administrators_only",
+  "source_release_gate": {
+    "workflow": "release-integrity",
+    "job": "attest-tag",
+    "tag_must_match_package_version": true,
+    "tagged_commit_must_be_ancestor_of_main": true
+  },
+  "administrative_state_note": "This file declares intended release-tag governance. GitHub administrator settings remain the enforcement plane and must be verified separately."
+}
