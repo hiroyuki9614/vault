@@ -70,6 +70,7 @@ organization_reader organization-visible documents only, read-only
 - Personal Vault metadata/member identity の列挙権限は持たない
 - Document write/delete はできない
 - private Document は読めない
+- Measurement 等の別Capabilityは読めない
 
 ## Grant / revoke
 
@@ -128,8 +129,10 @@ Auth user delete
   -> vaults.owner_user_id = null
   -> documents.created_by = null
   -> documents.updated_by = null
+  -> measurement_runs.recorded_by = null
   -> Vault remains
   -> Documents remain
+  -> retained Measurement remains
 ```
 
 したがって、
@@ -191,7 +194,7 @@ Archive は無期限保存を意味しない。
 - legal hold
 - deletion request handling
 - access review cadence
--退職後に誰が organization_reader を持つか
+- 退職後に誰が organization_reader を持つか
 - audit/log retention
 
 Public Vault reference implementation は特定法令への適合を自動的に主張しない。
