@@ -148,13 +148,14 @@ Read-back uses immutable document identity, not path.
 RLS remains authoritative. In addition, database write RPCs explicitly require the semantic vault role to be `owner` or `editor` before mutation or exact-replay reconciliation begins.
 
 ```text
-owner/editor -> write/reconcile allowed
-viewer       -> permission_denied
-non-member   -> permission_denied
-anon         -> no execute grant
+owner/editor        -> write/reconcile allowed
+viewer              -> permission_denied for writes
+organization_reader -> permission_denied for writes
+non-member          -> permission_denied
+anon                -> no execute grant
 ```
 
-This closes a subtle boundary where a read-authorized viewer could otherwise reach the post-update exact-replay check after RLS caused an update to affect zero rows. A matching already-committed state must never be interpreted as authorized write success for a non-writer.
+This closes a subtle boundary where a read-authorized role could otherwise reach the post-update exact-replay check after RLS caused an update to affect zero rows. A matching already-committed state must never be interpreted as authorized write success for a non-writer.
 
 ### Retry semantics
 
@@ -187,6 +188,47 @@ DeleteDocumentCommand
 ```
 
 `path` remains a locator. It is not identity evidence.
+
+## Vault hierarchy, Personal privacy, and offboarding
+
+Vault hierarchy is configuration data and is not an authorization shortcut. The initial operating profile is `Personal -> Organization`, but hierarchy names remain extensible through versioned migration data.
+
+```text
+Hierarchy
+  Personal -> Organization
+
+Normal Vault RBAC
+  owner / editor / viewer
+
+Narrow Personal work read
+  organization_reader
+```
+
+A parent Organization role does not automatically gain access to a child Personal Vault.
+
+`organization_reader` is a deliberately narrow Personal-Vault-only role. Access requires both:
+
+```text
+explicit organization_reader grant
+  +
+Document metadata visibility_scope = organization
+```
+
+Missing or unknown visibility metadata fails closed to Personal/private. `organization_reader` does not grant Document write/delete, Personal Vault/member identity enumeration, or Measurement access. The reader must remain a current member of the parent Organization; removing that parent membership revokes the child reader grant, and later rejoining does not silently reactivate it.
+
+Public Vault does not use automatic PII detection as an authorization decision. Expanding Personal content visibility is an explicit policy effect.
+
+Employee offboarding is a lifecycle transition rather than a data deletion shortcut:
+
+```text
+active Personal Vault
+  -> archived Personal Vault
+  -> optional Auth identity deletion
+```
+
+Archived Vaults are read-only for normal authenticated mutation. Auth identity deletion uses `ON DELETE SET NULL` for retained owner/author/measurement-recorder references so Vault, Document, and retained Measurement data are not cascade-deleted merely because an employee account is removed.
+
+The detailed privacy and retention contract is [`PERSONAL_VAULT_PRIVACY_AND_OFFBOARDING.md`](PERSONAL_VAULT_PRIVACY_AND_OFFBOARDING.md).
 
 ## Apache production boundary
 
@@ -275,6 +317,8 @@ delete_document(vault_id, document_id, expected_version)
 
 `get_document_by_id` exists specifically so mutation completion can verify the same subject.
 
+Vault administration/offboarding currently also exposes narrowly scoped database RPCs such as `grant_personal_vault_organization_reader`, `revoke_personal_vault_organization_reader`, and `archive_personal_vault`; these are not generic HTTP proxy endpoints.
+
 ## Stable error boundary
 
 Provider failures are normalized by the adapter to `DocumentStoreError`.
@@ -302,10 +346,15 @@ The HTTP adapter maps these semantic failures to bounded HTTP status codes and n
 
 Supabase Auth + RLS are mandatory.
 
-- owner: vault/member/document administration
-- editor: document read/write
-- viewer: document read only
+- owner: Vault/member/Document administration within the owned Vault
+- editor: full Document read/write within the granted Vault
+- viewer: full Document read within the granted Vault
+- organization_reader: Personal Vault only; explicitly organization-visible Documents only; read-only; no Measurement or Personal Vault/member identity enumeration
 - unauthenticated: no data access
+
+Hierarchy does not imply authorization. Parent Organization ownership alone does not grant child Personal Vault access.
+
+`organization_reader` requires an explicit parent-Organization-controlled grant and current parent Organization membership. Document visibility must also be explicitly classified as `metadata.visibility_scope = "organization"`; all other values fail closed to Personal/private.
 
 Service-role credentials are administration/migration credentials and are excluded from normal runtime contracts.
 
@@ -331,6 +380,8 @@ Supabase unavailable
 ```
 
 Mutation transport success alone is not completion. Mutation result and same-ID read-back must match the planned state.
+
+Employee Auth deletion is not a knowledge-deletion path. Retained Vault/Document/Measurement records preserve their data while identity foreign keys are cleared to null according to the offboarding migration contract.
 
 ## Build reproducibility
 
@@ -360,10 +411,10 @@ GitHub Ubuntu 24.04 runner
   -> bootstrap synthetic auth.users/auth.uid()
   -> apply supabase/migrations/*.sql in lexical order
      with ON_ERROR_STOP
-  -> execute document RLS/RPC acceptance SQL
+  -> execute database RLS/RPC acceptance SQL
 ```
 
-The acceptance contract verifies owner/editor/viewer/authenticated-outsider/anon behavior plus create/update replay, semantic conflicts, owner-only membership administration, and same-ID delete read-back.
+The acceptance contracts verify owner/editor/viewer/authenticated-outsider/anon behavior, create/update replay, semantic conflicts, owner-only ordinary membership administration, same-ID delete read-back, Personal -> Organization hierarchy, explicit organization-reader privacy boundaries, offboarding retention, parent-membership revocation, and Measurement isolation.
 
 The bootstrap is deliberately a small compatibility fixture, not an alternate Auth implementation and not a second production runtime.
 
@@ -407,6 +458,12 @@ Database contract:
 - every migration is executable in order
 - psql fails immediately on SQL errors
 - owner/editor/viewer/non-member/anon authorization boundaries
+- organization_reader explicit grant + organization-visible Document boundary
+- hierarchy does not grant implicit child access
+- parent Organization membership removal revokes child organization-reader access
+- archived Personal Vault normal mutation denial
+- Auth user deletion retains Vault/Document/Measurement data
+- Measurement is not widened to organization_reader
 - write authorization before replay reconciliation
 - idempotency/path/version conflict semantics
 - delete read-back
@@ -438,7 +495,7 @@ CI runs strict TypeScript typecheck, Vitest, production build/start smoke, Apach
 
 Repository-level engineering controls do not replace organization-level operations, compliance, backup, monitoring, incident response, real-Supabase acceptance, DNS/TLS/firewall administration, or branch administration.
 
-See [`ENTERPRISE_READINESS.md`](ENTERPRISE_READINESS.md), [`APACHE_DEPLOYMENT.md`](APACHE_DEPLOYMENT.md), [`REPOSITORY_GOVERNANCE.md`](REPOSITORY_GOVERNANCE.md), [`SECURITY_AUTOMATION.md`](SECURITY_AUTOMATION.md), and [`../SECURITY.md`](../SECURITY.md).
+See [`ENTERPRISE_READINESS.md`](ENTERPRISE_READINESS.md), [`APACHE_DEPLOYMENT.md`](APACHE_DEPLOYMENT.md), [`REPOSITORY_GOVERNANCE.md`](REPOSITORY_GOVERNANCE.md), [`SECURITY_AUTOMATION.md`](SECURITY_AUTOMATION.md), [`PERSONAL_VAULT_PRIVACY_AND_OFFBOARDING.md`](PERSONAL_VAULT_PRIVACY_AND_OFFBOARDING.md), and [`../SECURITY.md`](../SECURITY.md).
 
 ## Growth stoppers
 
