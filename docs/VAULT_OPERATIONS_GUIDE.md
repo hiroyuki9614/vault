@@ -18,8 +18,10 @@ Organization
 - development / staging / production は別 project に分離する。
 - Public Vault repository は runtime/schema/reference implementation であり、実業務データの保存場所ではない。
 - 通常 runtime は Supabase service-role key を使用しない。
-- 権限は既存の `owner / editor / viewer` を使う。
+- 通常の Vault 権限は `owner / editor / viewer` を使う。
+- Personal Vault の組織向け限定閲覧には `organization_reader` を使う。
 - hierarchy と membership/RBAC は別管理とする。
+- hierarchy だけを理由に Personal Vault を組織管理者へ公開しない。
 
 ## 初期セットアップ
 
@@ -57,7 +59,7 @@ Public Vault は現時点で generic Vault Administration HTTP API を公開し�
 
 ### 4. Organization member を設定する
 
-既存の membership を使う。
+通常 membership:
 
 ```text
 owner  = Vault / member / document administration
@@ -103,6 +105,50 @@ Organization Vault では次を優先する。
 - 共有運用に必要な文書
 
 個人固有情報や private context を、単に「便利そう」という理由だけで Organization Vault にコピーしない。
+
+## Personal Vault の組織閲覧
+
+### 基本
+
+Organization owner であること自体は Personal Vault の閲覧権限にならない。
+
+組織側から閲覧させたい業務情報は、Document metadata で明示する。
+
+```json
+{
+  "visibility_scope": "organization"
+}
+```
+
+この exact value が無い Document は private 扱いになる。AI が内容を推測して自動公開する契約ではない。
+
+### organization_reader
+
+Personal Vault の業務情報だけを閲覧するための限定role:
+
+```text
+organization_reader
+  read: visibility_scope=organization の Document のみ
+  write/delete: 不可
+  private Document: 不可
+  Vault/member identity enumeration: 不可
+```
+
+Parent Organization owner が、同じ Organization の member に対して明示 grant/revoke する。
+
+```sql
+select public.grant_personal_vault_organization_reader(
+  '<personal-vault-id>',
+  '<organization-member-user-id>'
+);
+
+select public.revoke_personal_vault_organization_reader(
+  '<personal-vault-id>',
+  '<organization-member-user-id>'
+);
+```
+
+`organization_reader` は `viewer` の別名ではない。Personal Vault にだけ付与できる。
 
 ## Personal -> Organization の昇格
 
@@ -186,6 +232,46 @@ Partial extraction
   Personal = personal-only extension
 ```
 
+## 退職・Offboarding
+
+### 原則
+
+```text
+退職
+!=
+Personal Vault削除
+```
+
+退職時は Personal Vault を archive して通常更新を止める。
+
+```sql
+select public.archive_personal_vault('<personal-vault-id>');
+```
+
+Personal owner または parent Organization owner が archive できる。
+
+`archived` Vault は通常の authenticated write/delete を拒否するが、許可されたreadは継続する。
+
+### 推奨順序
+
+```text
+1. 昇格済み / 未昇格 asset を確認
+2. 必要なら promote / extract / merge
+3. 必要な organization_reader を明示 grant
+4. Personal Vault を archive
+5. archive read-back
+6. 社内Identity/SSOを停止
+7. 必要なら Supabase Auth user を削除
+8. Vault / Documents survival を read-back
+9. retention policy に従って保管
+```
+
+Auth user を物理削除しても、その人がownerだったVaultや作成文書をcascade deleteしない。owner/authorのFKはnullになり、Vault/Document本体は保持する。
+
+Archive は無期限保存を意味しない。保存期間・法務上の保全・最終削除は導入組織のretention policyで決める。
+
+詳細は `docs/PERSONAL_VAULT_PRIVACY_AND_OFFBOARDING.md` を参照する。
+
 ## 権限例
 
 ```text
@@ -199,9 +285,9 @@ Member B Personal Vault
   parent     Organization Vault
 ```
 
-この場合、Manager A が Organization Vault owner であっても、それだけでは Member B の Personal Vault を自動閲覧できない。
+この状態だけでは Manager A は Member B の Personal Vault を読めない。
 
-Personal Vault を管理者が監査可能にする必要がある場合は、別途明示 membership / policy を設計する。Hierarchy を監査権限の代替にしない。
+必要な場合だけ、例えば Manager A または別の監査担当へ `organization_reader` を明示付与する。その場合でも読めるのは `visibility_scope=organization` のDocumentだけである。
 
 ## よくある誤り
 
@@ -211,10 +297,10 @@ Personal Vault を管理者が監査可能にする必要がある場合は、�
 
 ```text
 level = Personal / Organization
-role  = owner / editor / viewer
+role  = owner / editor / viewer / organization_reader
 ```
 
-別軸である。
+階層と権限は別軸である。
 
 ### Personal の内容を全部 Organization へ同期する
 
@@ -224,9 +310,21 @@ Public Vault は automatic upward mirror を提供しない。共有判断を通
 
 ### Organization owner なら全 Personal Vault を読めると考える
 
-現行仕様では誤り。
+誤り。
 
-親子関係は permission inheritance を意味しない。
+親子関係は permission inheritance を意味しない。明示された `organization_reader` でも private Document は読めない。
+
+### 個人情報をAI判定だけで organization-visible にする
+
+行わない。
+
+`visibility_scope=organization` は公開範囲を広げるeffectなので、導入組織のpolicyに従って明示分類する。
+
+### 退職者Auth userを最初に削除する
+
+避ける。
+
+先に昇格判断・必要なreader grant・archive/read-backを行う。
 
 ### Team 等を先に作る
 
@@ -262,6 +360,7 @@ Organization
 
 - automatic promotion
 - AI 単独承認
+- automatic PII detectionをauthorization decisionにすること
 - organization-wide automatic distribution
 - hierarchy-based permission inheritance
 - Team / Department / Company の既定実装
@@ -273,6 +372,7 @@ Organization
 ## 関連文書
 
 - `docs/VAULT_HIERARCHY_CONCEPT.md`
+- `docs/PERSONAL_VAULT_PRIVACY_AND_OFFBOARDING.md`
 - `docs/ARCHITECTURE.md`
 - `docs/ENTERPRISE_READINESS.md`
 - `README.md`

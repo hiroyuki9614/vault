@@ -54,6 +54,7 @@ vaults
   id
   level_key
   parent_vault_id
+  lifecycle_status
   ...existing fields
 ```
 
@@ -69,7 +70,7 @@ personal
 
 `vault_levels.key` は closed enum ではない。将来の階層追加は新しい versioned migration で level definition を追加・変更し、必要な Vault relationship を明示的に移行する。
 
-## Hierarchy と RBAC は別軸
+## Hierarchy と authorization は別軸
 
 Vault の階層と Vault 内での権限は混同しない。
 
@@ -77,9 +78,14 @@ Vault の階層と Vault 内での権限は混同しない。
 Hierarchy axis
   Personal -> Organization
 
-RBAC axis
+Authorization axis
   owner / editor / viewer
+
+Narrow Personal-work read
+  organization_reader
 ```
+
+`organization_reader` は階層roleでも通常viewerの別名でもない。Personal Vaultに対して、明示的に組織閲覧可と分類されたDocumentだけを読むための限定roleである。
 
 例:
 
@@ -92,9 +98,22 @@ Organization Vault
 Personal Vault of user B
   user B = owner
   parent = Organization Vault
+
+optional explicit grant
+  user A = organization_reader on user B Personal Vault
 ```
 
-親 Vault であることだけを理由に、親の owner/editor が子 Vault の内容を自動的に閲覧できるようにはしない。逆方向も同様である。アクセスは既存の membership + RLS で明示的に決める。
+親 Vault であることだけを理由に、親の owner/editor/viewer が子 Vault の内容を自動的に閲覧できるようにはしない。逆方向も同様である。
+
+Personal Vault の組織向け限定閲覧は、次の2条件を同時に満たす場合だけ成立する。
+
+```text
+explicit organization_reader grant
+  +
+Document metadata visibility_scope = organization
+```
+
+Document metadataに指定が無い、誤記されている、または別値の場合はprivateとして扱う。
 
 この分離により、組織構造を表す hierarchy が permission escalation の経路になることを防ぐ。
 
@@ -163,11 +182,28 @@ Personal
 
 同じ意味の mutable asset を Personal と Organization の両方で独立更新する long-lived dual canonical は避ける。
 
+## Offboarding lifecycle
+
+退職やアカウント削除は知識削除と同義にしない。
+
+```text
+Personal active
+  ↓
+archive
+  ↓
+read-only retained Personal Vault
+```
+
+Auth identity を後から削除しても、Vault/Document 本体を cascade deleteしない。owner/author参照はnullになり、保持対象データは残る。
+
+退職時にもPersonal Vault全体をOrganizationへコピーしない。再利用価値があるものだけ従来どおりpromote / extract / mergeし、その他はretention policyに従ってarchived Personal側に保持する。
+
 ## 現時点で自動化しないもの
 
 最初の `Personal -> Organization` 運用では次を自動化しない。
 
 - AI による無承認 promotion
+- AI判定だけによる `visibility_scope=organization` 付与
 - 親 Vault への自動同期
 - 子 Vault への自動配布
 - hierarchy による permission inheritance
@@ -176,7 +212,7 @@ Personal
 - cross-project automatic replication
 - universal promotion orchestrator
 
-既存 Document API、RLS、same-ID read-back を利用し、まず人間の判断を含む明示的な昇格運用で有効性を確認する。
+既存 Document API、RLS、same-ID read-back を利用し、まず人間の判断を含む明示的な昇格・閲覧運用で有効性を確認する。
 
 ## 将来拡張
 
@@ -197,3 +233,5 @@ Personal -> Project -> Division -> Enterprise
 でもよい。
 
 Public Vault が保証するのは特定の組織名称ではなく、**level definition と parent relationship を使った階層表現、および hierarchy と authorization の分離**である。
+
+Personal privacy / offboarding の詳細は `docs/PERSONAL_VAULT_PRIVACY_AND_OFFBOARDING.md` を正本とする。
