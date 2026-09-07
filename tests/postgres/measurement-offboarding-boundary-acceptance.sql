@@ -26,8 +26,8 @@ insert into public.measurement_runs (
   human_intervention,
   recorded_by
 ) values (
-  '99999999-7777-4777-8777-999999999999',
-  'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
+  '21212121-2121-4212-8212-212121212121',
+  '17171717-1717-4171-8171-171717171717',
   null,
   'task',
   'Synthetic retained measurement',
@@ -45,13 +45,13 @@ insert into public.measurement_runs (
   null,
   0,
   false,
-  '55555555-5555-4555-8555-555555555555'
+  '12121212-1212-4121-8121-121212121212'
 );
 
 -- organization_reader must not gain access to Measurement merely because it is
 -- a non-null Vault role.
 set role authenticated;
-select set_config('request.jwt.claim.sub', '77777777-7777-4777-8777-777777777777', false);
+select set_config('request.jwt.claim.sub', '14141414-1414-4141-8141-141414141414', false);
 
 DO $$
 declare
@@ -59,7 +59,7 @@ declare
 begin
   select count(*) into v_count
   from public.measurement_runs
-  where vault_id = 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb';
+  where vault_id = '17171717-1717-4171-8171-171717171717';
 
   if v_count <> 0 then
     raise exception 'acceptance_organization_reader_measurement_leak';
@@ -70,7 +70,7 @@ $$;
 -- Deleting the recorder identity retains historical Measurement evidence.
 reset role;
 delete from auth.users
-where id = '55555555-5555-4555-8555-555555555555';
+where id = '12121212-1212-4121-8121-121212121212';
 
 DO $$
 declare
@@ -78,7 +78,7 @@ declare
 begin
   select count(*) into v_count
   from public.measurement_runs
-  where id = '99999999-7777-4777-8777-999999999999'
+  where id = '21212121-2121-4212-8212-212121212121'
     and recorded_by is null;
 
   if v_count <> 1 then
@@ -87,7 +87,7 @@ begin
 
   select count(*) into v_count
   from public.vaults
-  where id = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'
+  where id = '16161616-1616-4161-8161-161616161616'
     and owner_user_id is null;
 
   if v_count <> 1 then
