@@ -40,7 +40,12 @@ set level_key = 'organization'
 where level_key is null;
 
 alter table public.vaults
-  alter column level_key set not null;
+  alter column level_key set not null,
+  alter column level_key set default 'organization';
+
+-- The default is a compatibility choice for the starter profile, not a closed
+-- enum. Hierarchical child Vault creation should always provide level_key and
+-- parent_vault_id explicitly.
 
 create index vaults_parent_vault_id_idx on public.vaults(parent_vault_id);
 create index vaults_level_key_idx on public.vaults(level_key);
