@@ -81,6 +81,81 @@ owner_user_id = <Personal Vault owner>
 
 Current profile では parent のない Personal Vault は拒否される。また Personal Vault を別の Personal Vault の子にすることも拒否される。
 
+## 推奨導入フロー
+
+Public Vault の初期導入では、Organization Vault を先に「完成した共有知識」で満たそうとしない。
+
+まず Organization boundary と必要最小限の権限だけを用意し、実際の知識育成は Personal Vault から始める。
+
+```text
+Organization Vault を用意
+        ↓
+少人数の Personal Vault を作成
+        ↓
+各自が実業務で Personal Vault を使う
+        ↓
+繰り返し効果があった asset を見つける
+        ↓
+promote / extract / merge / reject
+        ↓
+再利用価値があるものだけ Organization Vault へ
+        ↓
+組織で再利用し、必要なら対象者を徐々に増やす
+```
+
+最初から多数の利用者・大量の文書・複雑な階層を投入しない。まず少人数で `Personal -> Organization` の流れが自然に回ることを確認する。
+
+### 日常の既定動作
+
+新しい Rule / Skill / Template / Knowledge を作るとき、保存先に迷った場合は次を既定とする。
+
+```text
+まだ個人で試している
+  -> Personal
+
+繰り返し役立ったが汎用性は未確認
+  -> Personal
+
+他の人にも再利用でき、個人依存を除去できた
+  -> OrganizationへのCandidate
+
+組織標準・共有手順・共通規程として最初から組織正本である
+  -> Organization
+```
+
+この既定により、Organization Vault を「とりあえず共有する場所」にしない。
+
+### 組織へ上げるタイミング
+
+案件や作業の記録そのものを丸ごとOrganizationへ移すのではなく、実運用で価値が確認できた後に汎用部分を抽出する。
+
+```text
+案件・作業の具体記録
+        ↓ Personalで蓄積
+何度か役立つ
+        ↓
+再利用可能部分を抽出
+        ↓
+個人情報 / secret / customer-specific context を除去
+        ↓
+Organizationへ promote / extract / merge
+```
+
+共有判断に迷う場合は Personal に残す。公開範囲を広げる判断は fail-open にしない。
+
+### 導入拡大の目安
+
+次へ広げるのは、現在の利用者で次が確認できてからとする。
+
+- Personalでの記録・利用が継続している
+- Organizationへの昇格候補が実際に発生している
+- promote / extract / merge / reject の判断が無理なく行える
+- Organizationに上げたassetが別の利用者にも役立った
+- private情報とorganization-readable情報の区別が運用できている
+- 退職・異動時のarchive / access reviewを説明できる
+
+これらが確認できるまでは、Team / Department / Company 等の新しい階層を先に増やさない。
+
 ## 日常運用
 
 ### Personal Vault の役割
