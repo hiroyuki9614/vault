@@ -151,6 +151,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Test NotePM to Onyx ingestion adapter
+        run: python -m unittest tests/test_notepm_onyx_ingestion.py
+
       - name: Test architecture checker
         run: python -m unittest tests/test_architecture_check.py
 
