@@ -12,9 +12,10 @@ Read only what the task needs:
 2. `core/machine/indexes/responsibilities.json`
 3. task-owner public contract, normally `<capability>/public.ts`
 4. `docs/ARCHITECTURE.md` when architecture/data boundary is material
-5. `docs/ENTERPRISE_READINESS.md` when production/enterprise readiness is material
-6. `docs/MEASUREMENT.md` when observability/Agent/Skill measurement is material
-7. `.agents/SKILLS_INDEX.md` only when a listed Skill is materially useful
+5. `docs/INFORMATION_ARCHITECTURE.md` when creating/materially updating durable repository artifacts or when artifact identity/canonical boundaries are material
+6. `docs/ENTERPRISE_READINESS.md` when production/enterprise readiness is material
+7. `docs/MEASUREMENT.md` when observability/Agent/Skill measurement is material
+8. `.agents/SKILLS_INDEX.md` only when a listed Skill is materially useful
 
 Do not preload all Skills or repository history.
 
@@ -67,6 +68,28 @@ delete effect
 ```
 
 Do not downgrade same-ID verification to path-only verification.
+
+## Repository artifact identity boundary
+
+Mutable Vault documents and Git-managed public artifacts use separate identity domains.
+
+```text
+mutable Vault document data
+  -> public.documents.id
+
+Git-managed durable public artifact
+  -> public_artifact_id
+```
+
+For durable repository artifacts that need identity independent of path, follow `docs/INFORMATION_ARCHITECTURE.md`.
+
+- preserve the same `public_artifact_id` across rename, move, lifecycle changes and ordinary/major edits when the semantic artifact remains the same;
+- issue a fresh ID for a new independent artifact, fork or independently evolving copy;
+- do not copy private/shared Vault document identities into this public repository;
+- do not add IDs to every Markdown file merely because it exists;
+- when materially updating a legacy durable artifact that lacks identity, backfill it when the information-architecture rule applies.
+
+Do not create a global artifact registry or second document database merely to support repository artifact identity.
 
 ## Measurement boundary
 
