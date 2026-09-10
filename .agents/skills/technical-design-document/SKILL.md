@@ -53,20 +53,23 @@ no-document
 
 ## Procedure
 
-1. repositoryのdocument/canonical policyを先に確認する。
+1. repositoryのdocument/canonical policyを先に確認する。Public Vaultでは `docs/INFORMATION_ARCHITECTURE.md` をrepository artifact identityの正本として扱う。
 2. 新規文書より既存owner更新で済むか確認する。
 3. 新しいartifactが必要なら、その文書が所有する情報と所有しない情報を宣言する。
-4. durable boundary / decision / acceptanceだけを書く。
-5. SHA、PR、daily status、実行log等のmutable evidenceはdurable designへ固定しない。
-6. major software-structure decisionだけ、意味の異なる代替案を比較する。形式的な第二案を捏造しない。
-7. secret、実credential、不要なprovider/path current valueを埋め込まない。
-8. canonical ownerと重複がないことをread-backする。
+4. stable identityが必要なdurable artifactなら、既存artifactの更新・rename・moveでは同じ `public_artifact_id` を維持し、新しい独立artifactにはfresh machine-generated UUIDを発行する。
+5. private/shared artifactをpublicへ蒸留・公開する場合はprivate/shared identityをコピーせず、独立したpublic artifactとしてfresh `public_artifact_id` を発行する。
+6. durable boundary / decision / acceptanceだけを書く。
+7. SHA、PR、daily status、実行log等のmutable evidenceはdurable designへ固定しない。
+8. major software-structure decisionだけ、意味の異なる代替案を比較する。形式的な第二案を捏造しない。
+9. secret、実credential、不要なprovider/path current valueを埋め込まない。
+10. identity-bearing artifactではsame `public_artifact_id` をread-backし、意図しないduplicate current artifactがないことを確認する。identity不要のartifactではcanonical ownerと重複がないことをread-backする。
 
 ## Output
 
 ```text
 artifact decision
 canonical responsibility
+artifact identity when applicable
 minimal durable content
 related owner references
 completion / verification
@@ -74,10 +77,10 @@ completion / verification
 
 ## Terminal outcomes
 
-- `completed`: 適切なartifact ownerへdurable decisionが一意に固定された
+- `completed`: 適切なartifact ownerへdurable decisionが一意に固定され、identity対象ならsame-ID continuityも確認された
 - `not_applicable`: 新規/大幅文書化が不要
 - `blocked`: repositoryのcanonical policyまたはrequired decision authorityが不明
-- `failed`: duplicate/contradictory canonicalを解消できない
+- `failed`: duplicate/contradictory canonicalまたはidentity衝突を解消できない
 
 ## Do not
 
@@ -86,3 +89,5 @@ completion / verification
 - current SHA / PR / check結果をdurable designへ固定する
 - 実装手順だけのためにarchitecture documentを増やす
 - repository固有information architectureを上書きする
+- pathをstable artifact identityとして扱う
+- private/shared document identityをpublic artifact identityとして再利用する
